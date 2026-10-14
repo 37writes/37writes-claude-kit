@@ -12,6 +12,8 @@ if not repo:
 
 lines = ["[37writes-kit] kit 프로젝트입니다. 프로필은 CLAUDE.md, 작업 로그는 docs/devlog/ 에 있습니다."]
 
+kitlib.register(repo)
+
 status, message = install(repo)
 if status != "ok":
     lines.append(message)

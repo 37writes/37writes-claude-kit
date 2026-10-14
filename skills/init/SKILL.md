@@ -84,6 +84,7 @@ AskUserQuestion으로 **한 번에** 묻는다. 감지 결과로 답할 수 있�
 3. commit-msg 훅 설치. 이 스킬의 base directory 기준으로 `../../scripts/install_githook.py`를 실행한다:
    `python3 "<base directory>/../../scripts/install_githook.py" "<레포 루트>"` (python3가 없으면 python)
    - 결과 메시지를 그대로 사용자에게 전달한다. 기존 훅이 있어 건너뛴 경우 그 이유를 설명한다.
+   - 이 스크립트는 레포를 kit 등록부(`~/.config/37writes-kit/repos.txt`)에도 등록한다. /kit:weekly가 이 목록으로 프로젝트를 찾는다.
    - 참고: git 훅은 clone으로 복사되지 않는다. 다른 컴퓨터에서는 kit 플러그인의 SessionStart 훅이 자동으로 설치한다.
 
 ## 6. 원격 저장소 (사용자가 선택한 경우만, 실행 전 확인)

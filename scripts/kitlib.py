@@ -47,5 +47,38 @@ def read(path):
         return f.read()
 
 
+REGISTRY = os.path.join(os.path.expanduser("~"), ".config", "37writes-kit", "repos.txt")
+
+
+def canonical(path):
+    """심볼릭 링크, 슬래시 방향, 대소문자(윈도우) 차이를 없앤 경로."""
+    return os.path.normcase(os.path.realpath(path))
+
+
+def _registry_lines():
+    if not os.path.exists(REGISTRY):
+        return []
+    return [line.strip() for line in read(REGISTRY).splitlines() if line.strip()]
+
+
+def registered_repos():
+    """등록부에 있는 kit 레포 중 아직 존재하는 것."""
+    paths = dict.fromkeys(_registry_lines())
+    return [p for p in paths if os.path.isdir(os.path.join(p, DEVLOG_DIR))]
+
+
+def register(repo):
+    """kit 레포를 등록부에 추가한다. 폴더 탐색 없이 /kit:weekly가 레포를 찾을 수 있게."""
+    if not os.path.isdir(os.path.join(repo, DEVLOG_DIR)):
+        return False
+    repo = canonical(repo)
+    if repo in {canonical(p) for p in _registry_lines()}:
+        return False
+    os.makedirs(os.path.dirname(REGISTRY), exist_ok=True)
+    with open(REGISTRY, "a", encoding="utf-8") as f:
+        f.write(repo + "\n")
+    return True
+
+
 def emit(obj):
     print(json.dumps(obj, ensure_ascii=False))

@@ -33,13 +33,14 @@ disable-model-invocation: true
 - **독창성**: 공식 문서를 옮겨 쓰지 않는다. 직접 겪은 상황과 해결 과정이 글의 가치다.
 - 한국어, 용어와 코드는 원문. 문체는 "~합니다".
 - 카테고리와 태그는 기존 글(`_posts/`)에서 쓰던 것을 우선 재사용해서 일관성을 지킨다.
+- 관련된 기존 글이 있으면 본문에서 `[제목]({% post_url 파일명-확장자제외 %})`로 연결한다 (내부 링크는 체류 시간과 검색 노출에 도움).
 
-파일: `_posts/YYYY-MM-DD-<영어-slug>.md` (발행일 기준). 주소는 `https://37writes.github.io/posts/<영어-slug>/`가 된다.
+파일: `_posts/YYYY-MM-DD-<영어-slug>.md` (발행일 기준). **date는 현재 시각보다 과거여야 한다.** Jekyll은 미래 시각의 글을 빌드에서 빼 버린다 (`date` 명령으로 현재 시각 확인). 같은 날 여러 편이면 몇 분씩 차이를 둔다. 주소는 `https://37writes.github.io/posts/<영어-slug>/`가 된다.
 
 ```yaml
 ---
 title: "ROS2 QoS: Reliable과 Best Effort, 언제 무엇을 쓸까"
-date: 2026-10-14 21:00:00 +0900
+date: 2026-10-14 15:00:00 +0900
 categories: [ROS2, 통신]          # 최대 2단계: [대분류, 소분류]
 tags: [ros2, dds, qos]            # 영어 소문자
 description: "검색 결과에 보일 요약 120~160자"
