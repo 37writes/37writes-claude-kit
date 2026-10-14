@@ -35,6 +35,15 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `/kit:weekly` | 주 1회 | 모든 kit 프로젝트의 devlog·커밋·TIL·블로그를 모아 주간 정리 (my-notes/weekly) |
 | `/kit:feedback` | 다른 프로젝트에서 kit 개선 아이디어가 떠올랐을 때 | 대화 맥락을 붙여 이 저장소에 GitHub 이슈(feedback 라벨)로 등록, 하던 작업으로 복귀 |
 
+## /kit 패널
+
+`/kit`을 입력하면 kit 패널이 열리고, 한 번 더 입력하면 닫힙니다. Claude를 거치지 않으므로 토큰을 쓰지 않습니다.
+
+- **스킬**: 설치된 `/kit:*` 명령과 한 줄 설명 (스킬을 추가하면 자동 반영)
+- **이 프로젝트**: 구분, 최근 devlog, 기록 안 된 커밋 수, 다음 할 일. Claude의 답이 끝날 때마다 갱신
+
+패널을 띄울 수 없는 환경(`claude -p` 등)에서는 같은 내용을 텍스트로 보여 줍니다.
+
 ## 훅 (자동 실행)
 
 | 훅 | 시점 | 하는 일 |

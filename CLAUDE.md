@@ -33,6 +33,9 @@ scripts/py.sh                    python3 → python → py 순으로 실제 동�
 scripts/kitlib.py                공통: git 호출(utf-8), kit 레포 판정, devlog 파일, 등록부, JSON 출력
 scripts/*.py                     훅과 스킬이 부르는 스크립트
 githooks/commit-msg              커밋 형식 검사 git 훅 (sh, Python 불필요)
+hooks/panel.tsx                  mod(함수 훅 모듈): /kit 명령과 kit 패널. hooks.json의 "modules"에 등록
+hooks/panel.test.tsx             패널 테스트 (claude plugin test .)
+types/index.d.ts                 패널의 $.state 계약 (plugin.json "types")
 ```
 
 ## 핵심 개념과 결정
@@ -69,8 +72,9 @@ githooks/commit-msg              커밋 형식 검사 git 훅 (sh, Python 불필
    cd ~/Documents/dev/kit_test && claude -p --plugin-dir ~/Documents/dev/37writes-claude-kit \
      --allowedTools "Bash(git:*)" "Read" "Write" -- "/kit:plan ..."
    ```
-4. 스크립트를 크게 바꿨으면 `/kit:check scripts`로 점검한다 (실제 버그를 잡은 적 있음).
-5. 등록부·HOME을 건드리는 테스트는 `HOME=<임시폴더>`로 격리한다.
+4. 패널(mod)을 바꿨으면: `claude plugin test .` (단위 + 터미널/데스크톱 마운트), 타입 검사는 `npx -p typescript tsc -p <tsconfig>` (tsconfig는 engine 타입 파일 헤더 참고, 레포 밖에 둔다). `claude -p --plugin-dir . "/kit"`로 명령 동작 확인 (패널 대신 텍스트 출력). 이 레포를 --plugin-dir로 띄운 대화형 세션에서는 저장하면 핫 리로드된다. 테스트의 `$`에는 `$.state`가 없으므로 파싱은 순수 함수로 빼서 테스트한다.
+5. 스크립트를 크게 바꿨으면 `/kit:check scripts`로 점검한다 (실제 버그를 잡은 적 있음).
+6. 등록부·HOME을 건드리는 테스트는 `HOME=<임시폴더>`로 격리한다.
 
 ## 개선 요청 처리
 
