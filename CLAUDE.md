@@ -27,7 +27,7 @@
 ```
 .claude-plugin/plugin.json       플러그인 이름 "kit" (명령이 /kit:xxx), 버전
 .claude-plugin/marketplace.json  마켓플레이스 이름 "37writes" (설치: kit@37writes), 버전 동기화
-skills/<이름>/SKILL.md           스킬 9개: init commit devlog plan til blog check release weekly
+skills/<이름>/SKILL.md           스킬 10개: init commit devlog plan til blog check release weekly feedback
 hooks/hooks.json                 SessionStart(이어하기·훅 설치·등록) / PreToolUse Bash(위험 명령 확인) / Stop(devlog 알림)
 scripts/py.sh                    python3 → python → py 순으로 실제 동작하는 Python 실행 (윈도우 스토어 스텁 회피)
 scripts/kitlib.py                공통: git 호출(utf-8), kit 레포 판정, devlog 파일, 등록부, JSON 출력
@@ -71,6 +71,11 @@ githooks/commit-msg              커밋 형식 검사 git 훅 (sh, Python 불필
    ```
 4. 스크립트를 크게 바꿨으면 `/kit:check scripts`로 점검한다 (실제 버그를 잡은 적 있음).
 5. 등록부·HOME을 건드리는 테스트는 `HOME=<임시폴더>`로 격리한다.
+
+## 개선 요청 처리
+
+다른 프로젝트에서 /kit:feedback 으로 남긴 아이디어는 이 레포의 GitHub 이슈(`feedback` 라벨)에 쌓인다. 이 레포에서 세션을 시작하면 SessionStart 훅이 열린 이슈 목록을 알려준다.
+처리 커밋 본문에 `Closes #번호`를 적으면 push 때 이슈가 닫힌다.
 
 ## 버전과 배포
 

@@ -7,7 +7,7 @@
     {
       "name": "kit",
       "description": "37writes 1인 개발 프로세스: 프로필, 커밋 규칙, 작업 로그, 기획, TIL, 블로그, 점검, 배포, 주간 정리",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "source": "./"
     }
   ],

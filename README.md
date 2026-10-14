@@ -33,12 +33,13 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `/kit:check` | 머지·배포 전 | 프로필의 빌드·테스트 실행 + 언어별 체크리스트 리뷰, 보고 후 승인된 것만 수정 |
 | `/kit:release` | 배포할 때 | 버전·릴리즈 노트·CHANGELOG, Amplify 배포 확인 / exe 묶음·체크섬 / 앱(첫 배포 때 확정) |
 | `/kit:weekly` | 주 1회 | 모든 kit 프로젝트의 devlog·커밋·TIL·블로그를 모아 주간 정리 (my-notes/weekly) |
+| `/kit:feedback` | 다른 프로젝트에서 kit 개선 아이디어가 떠올랐을 때 | 대화 맥락을 붙여 이 저장소에 GitHub 이슈(feedback 라벨)로 등록, 하던 작업으로 복귀 |
 
 ## 훅 (자동 실행)
 
 | 훅 | 시점 | 하는 일 |
 |---|---|---|
-| 이어하기 | 세션 시작 | 최근 devlog의 "다음 할 일"을 Claude에게 전달, commit-msg 훅이 없으면 설치, 레포를 kit 등록부에 등록 |
+| 이어하기 | 세션 시작 | 최근 devlog의 "다음 할 일"을 Claude에게 전달, commit-msg 훅이 없으면 설치, 레포를 kit 등록부에 등록. kit 레포에서는 열린 feedback 이슈 표시 |
 | 위험 명령 확인 | 명령 실행 직전 | git push, reset --hard, rm -rf ~, DROP TABLE, AWS 삭제 등은 사용자 확인 |
 | devlog 알림 | 답변 끝 | 기록 안 된 커밋이 새로 생기면 한 번 알림 |
 | commit-msg (git 훅) | 모든 커밋 | 커밋 메시지 형식 검사. VS Code에서 직접 커밋해도 적용 |

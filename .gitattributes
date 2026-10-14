@@ -1,0 +1,4 @@
+# 셸 스크립트와 git 훅은 윈도우에서도 LF여야 sh가 실행할 수 있다
+*.sh text eol=lf
+githooks/* text eol=lf
+*.py text eol=lf
