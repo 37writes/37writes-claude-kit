@@ -1,0 +1,17 @@
+{
+  "name": "37writes",
+  "owner": {
+    "name": "37writes"
+  },
+  "plugins": [
+    {
+      "name": "kit",
+      "description": "37writes 1인 개발 프로세스: 프로젝트 프로필, 커밋 규칙, 작업 로그",
+      "version": "0.1.0",
+      "source": "./"
+    }
+  ],
+  "metadata": {
+    "description": "37writes의 1인 개발 프로세스 플러그인"
+  }
+}
