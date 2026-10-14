@@ -27,6 +27,8 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `/kit:init` | 프로젝트당 한 번 | git init, 프로젝트 프로필(CLAUDE.md), `docs/devlog`·`docs/plans`, commit-msg 훅 |
 | `/kit:commit` | 커밋할 때 | 변경을 논리 단위로 나눠 `type(scope): 한국어 요약` 형식으로 커밋 |
 | `/kit:devlog` | 작업 단위가 끝났을 때 | `docs/devlog/YYYY-MM.md`에 정해진 형식으로 작업 로그 기록 |
+| `/kit:plan` | 새 기능을 시작할 때 | 코드를 먼저 읽고 추천값이 달린 질문으로 `docs/plans/` 기획서 작성 |
+| `/kit:til` | 개발 중 새 개념을 알았을 때 | `~/Documents/dev/my-notes/til/`에 개념 메모 저장 (블로그 원료) |
 
 ## 훅 (자동 실행)
 
@@ -50,5 +52,6 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 
 ## 로드맵
 - [x] init, commit, devlog, 훅
-- [ ] plan, check, release, docs (회사/대학원 양식)
-- [ ] til, blog (GitHub Pages + 애드센스), weekly
+- [x] plan, til
+- [ ] docs (회사/대학원 양식), blog (GitHub Pages + 애드센스)
+- [ ] check, release, weekly
