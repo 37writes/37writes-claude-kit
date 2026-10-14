@@ -29,6 +29,7 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `/kit:devlog` | 작업 단위가 끝났을 때 | `docs/devlog/YYYY-MM.md`에 정해진 형식으로 작업 로그 기록 |
 | `/kit:plan` | 새 기능을 시작할 때 | 코드를 먼저 읽고 추천값이 달린 질문으로 `docs/plans/` 기획서 작성 |
 | `/kit:til` | 개발 중 새 개념을 알았을 때 | `~/Documents/dev/my-notes/til/`에 개념 메모 저장 (블로그 원료) |
+| `/kit:blog` | 글을 쓰고 싶을 때 | TIL 메모를 블로그 글로 완성, 회사 정보 필터링, 확인 후 37writes.github.io에 발행 |
 
 ## 훅 (자동 실행)
 
@@ -53,5 +54,6 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 ## 로드맵
 - [x] init, commit, devlog, 훅
 - [x] plan, til
-- [ ] docs (회사/대학원 양식), blog (GitHub Pages + 애드센스)
+- [x] blog (GitHub Pages)
+- [ ] docs (회사/대학원 양식), 애드센스 연결 (개인 도메인 구매 후)
 - [ ] check, release, weekly
