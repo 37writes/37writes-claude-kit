@@ -58,7 +58,7 @@ githooks/commit-msg              커밋 형식 검사 git 훅 (sh, Python 불필
 
 ## 검증 방법
 
-1. `claude plugin validate .`
+1. `claude plugin validate .` — "CLAUDE.md at the plugin root is not loaded" 경고는 정상이다. 이 파일은 플러그인 사용자용이 아니라 이 레포를 개발하는 세션용이다.
 2. 훅 스크립트는 JSON을 stdin으로 넣어 직접 실행:
    ```sh
    echo '{"cwd":"<kit 레포 경로>"}' | sh scripts/py.sh scripts/session_start.py
