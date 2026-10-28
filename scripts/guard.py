@@ -15,6 +15,9 @@ RULES = [
     (r"\baws\s+\S+\s+delete-", "AWS 리소스 삭제"),
     (r"\baws\s+s3\s+(rb|rm\s+.*--recursive)", "S3 버킷/객체 일괄 삭제"),
     (r"\bamplify\s+(delete|publish)\b", "Amplify 삭제/배포"),
+    (r"\bcdk\s+(deploy|destroy)\b", "CDK 배포/삭제: AWS 리소스가 바뀝니다 (먼저 cdk diff)"),
+    (r"\bterraform\s+(apply|destroy)\b", "Terraform 적용/삭제: 인프라가 바뀝니다 (먼저 terraform plan)"),
+    (r"\baws\s+iam\s+(put|attach|detach|create|update)-", "IAM 권한 변경"),
 ]
 
 

@@ -20,6 +20,7 @@
 - 작업 로그: `docs/devlog/YYYY-MM.md`, 의미 있는 작업 단위가 끝나면 /kit:devlog 로 기록한다.
 - 기획서: `docs/plans/`
 - push, 배포, 삭제는 실행 전에 반드시 사용자 확인을 받는다.
+- 작업 등급: T0 바로 처리 / T1 기획서 + 독립 검증 / T2(배포·push·권한·시크릿·데이터 삭제) 사용자 승인 + 미리보기 먼저. 절차는 /kit:harness.
 <!-- 37writes-kit:profile:end -->
 
 ## 구조
@@ -27,11 +28,11 @@
 ```
 .claude-plugin/plugin.json       플러그인 이름 "kit" (명령이 /kit:xxx), 버전
 .claude-plugin/marketplace.json  마켓플레이스 이름 "37writes" (설치: kit@37writes), 버전 동기화
-skills/<이름>/SKILL.md           스킬 10개: init commit devlog plan til blog check release weekly feedback
+skills/<이름>/SKILL.md           스킬 11개: init commit devlog plan harness til blog check release weekly feedback
 hooks/hooks.json                 SessionStart(이어하기·훅 설치·등록) / PreToolUse Bash(위험 명령 확인) / Stop(devlog 알림)
 scripts/py.sh                    python3 → python → py 순으로 실제 동작하는 Python 실행 (윈도우 스토어 스텁 회피)
 scripts/kitlib.py                공통: git 호출(utf-8), kit 레포 판정, devlog 파일, 등록부, JSON 출력
-scripts/*.py                     훅과 스킬이 부르는 스크립트
+scripts/*.py                     훅과 스킬이 부르는 스크립트 (session_text.py: 대화 기록 → 텍스트, /kit:blog용)
 githooks/commit-msg              커밋 형식 검사 git 훅 (sh, Python 불필요)
 hooks/panel.tsx                  mod(함수 훅 모듈): /kit 명령과 kit 패널. hooks.json의 "modules"에 등록
 hooks/panel.test.tsx             패널 테스트 (claude plugin test .)
@@ -43,6 +44,7 @@ types/index.d.ts                 패널의 $.state 계약 (plugin.json "types")
 - **kit 프로젝트 판정**: `docs/devlog/`가 있는 git 레포. 훅은 kit 프로젝트에서만 동작한다.
 - **등록부** `~/.config/37writes-kit/repos.txt`: macOS 개인정보 보호(TCC) 때문에 터미널이 `~/Documents`, `~/Desktop` 폴더 목록을 읽지 못한다. 그래서 /kit:weekly는 폴더 탐색 대신 등록부를 쓴다. SessionStart 훅과 `install_githook.py`가 등록한다.
 - **git 훅은 clone으로 전파되지 않는다** → SessionStart 훅이 kit 레포에서 commit-msg 훅이 없으면 설치한다. 기존 훅이나 `core.hooksPath`(husky 등)가 있으면 건드리지 않는다.
+- **harness 스킬**: AWS Deep Insight 역할 구조를 옮긴 작업 절차 (T0~T2 등급, 작업 카드, 워커 보고 양식, 독립 검증). Orca가 있으면 Orca 워커, 없으면 서브에이전트, 그것도 아니면 단일 세션 + /kit:check. 프로필의 "작업 등급" 줄이 이 스킬로 안내하므로 모델 호출을 막지 않는다. 배경은 블로그 시리즈 "AI 에이전트에게 팀을 만들어 주기"(2026-10-28).
 - **스킬 토큰 비용**: SKILL.md의 `description`은 매 요청 컨텍스트에 들어가므로 짧게. 사용자가 직접 부르는 스킬(init, plan, blog, release, weekly)은 `disable-model-invocation: true`.
 - **스킬에서 스크립트 경로**: 스킬 로드 시 "Base directory for this skill"이 주어지므로 `<base directory>/../../scripts/xxx.py`로 참조한다.
 - **사용자 보고 언어**: 한국어. 비대화(`claude -p`) 실행에서 영어로 보고한 적이 있어 일부 스킬에 명시했다.

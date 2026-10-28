@@ -19,7 +19,7 @@ export function summarize(description: string): string {
 }
 
 // 작업 흐름 순서. 여기 없는 새 스킬은 뒤에 이름순으로 붙는다
-const ORDER = ['init', 'plan', 'commit', 'devlog', 'check', 'release', 'til', 'blog', 'weekly', 'feedback']
+const ORDER = ['init', 'plan', 'harness', 'commit', 'devlog', 'check', 'release', 'til', 'blog', 'weekly', 'feedback']
 
 async function kitSkills($: EngineInterface): Promise<KitSkill[]> {
   const prefix = `${$.plugin.name}:`

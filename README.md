@@ -27,9 +27,10 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `/kit:init` | 프로젝트당 한 번 | git init, 프로젝트 프로필(CLAUDE.md), `docs/devlog`·`docs/plans`, commit-msg 훅 |
 | `/kit:commit` | 커밋할 때 | 변경을 논리 단위로 나눠 `type(scope): 한국어 요약` 형식으로 커밋 |
 | `/kit:devlog` | 작업 단위가 끝났을 때 | `docs/devlog/YYYY-MM.md`에 정해진 형식으로 작업 로그 기록 |
-| `/kit:plan` | 새 기능을 시작할 때 | 코드를 먼저 읽고 추천값이 달린 질문으로 `docs/plans/` 기획서 작성 |
+| `/kit:plan` | 새 기능을 시작할 때 | 코드를 먼저 읽고 추천값이 달린 질문으로 `docs/plans/` 기획서 작성 (등급, 단계별 담당·완료 조건) |
+| `/kit:harness` | 기능·버그·배포·권한 작업을 시작할 때 (Claude가 알아서 부름) | 위험도 T0~T2 분류 → 계획 → 워커(Orca/서브에이전트)에게 작업 카드 → 독립 검증 → T2는 승인·미리보기 → 기록·정리 |
 | `/kit:til` | 개발 중 새 개념을 알았을 때 | `~/Documents/dev/my-notes/til/`에 개념 메모 저장 (블로그 원료) |
-| `/kit:blog` | 글을 쓰고 싶을 때 | TIL 메모를 블로그 글로 완성, 회사 정보 필터링, 확인 후 37writes.github.io에 발행 |
+| `/kit:blog` | 글을 쓰고 싶을 때 | TIL 메모나 지난 대화를 블로그 글(시리즈 가능)로 완성, 회사 정보 필터링, 확인 후 37writes.github.io에 발행 |
 | `/kit:check` | 머지·배포 전 | 프로필의 빌드·테스트 실행 + 언어별 체크리스트 리뷰, 보고 후 승인된 것만 수정 |
 | `/kit:release` | 배포할 때 | 버전·릴리즈 노트·CHANGELOG, Amplify 배포 확인 / exe 묶음·체크섬 / 앱(첫 배포 때 확정) |
 | `/kit:weekly` | 주 1회 | 모든 kit 프로젝트의 devlog·커밋·TIL·블로그를 모아 주간 정리 (my-notes/weekly) |
@@ -49,7 +50,7 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | 훅 | 시점 | 하는 일 |
 |---|---|---|
 | 이어하기 | 세션 시작 | 최근 devlog의 "다음 할 일"을 Claude에게 전달, commit-msg 훅이 없으면 설치, 레포를 kit 등록부에 등록. kit 레포에서는 열린 feedback 이슈 표시 |
-| 위험 명령 확인 | 명령 실행 직전 | git push, reset --hard, rm -rf ~, DROP TABLE, AWS 삭제 등은 사용자 확인 |
+| 위험 명령 확인 | 명령 실행 직전 | git push, reset --hard, rm -rf ~, DROP TABLE, AWS 삭제, cdk deploy, terraform apply, IAM 권한 변경 등은 사용자 확인 |
 | devlog 알림 | 답변 끝 | 기록 안 된 커밋이 새로 생기면 한 번 알림 |
 | commit-msg (git 훅) | 모든 커밋 | 커밋 메시지 형식 검사. VS Code에서 직접 커밋해도 적용 |
 
@@ -70,3 +71,4 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 - [x] blog (GitHub Pages)
 - [ ] docs (회사/대학원 양식), 애드센스 연결 (개인 도메인 구매 후)
 - [x] check, release, weekly
+- [x] harness (AWS Deep Insight식 에이전트 작업 절차), 대화 기반 블로그 시리즈

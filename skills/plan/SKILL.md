@@ -54,6 +54,7 @@ AskUserQuestion으로 한 라운드에 최대 4개씩. 각 질문에는 조사 �
 title: 소셜 로그인 추가
 date: 2026-10-14
 status: draft          # draft → approved → in-progress → done
+tier: T1               # /kit:harness 등급 (T1 일반, T2 배포·권한·데이터 삭제 등)
 ---
 
 # 소셜 로그인 추가
@@ -80,16 +81,22 @@ status: draft          # draft → approved → in-progress → done
 - ...
 
 ## 작업 단계
-- [ ] 1. ... (커밋 하나 크기로 쪼갠다)
-- [ ] 2. ...
-- [ ] 3. 테스트
+- [ ] S1. ... — 담당 — 완료 조건 (커밋 하나 크기로 쪼갠다)
+- [ ] S2. ... — Coder — `npm test` 통과
+- [ ] S3. 독립 검증 — Validator — S1·S2 검사 재실행, 변경 범위 확인
 
 ## 완료 기준
-- ...
+- 사용자가 보게 될 결과로 쓴다 (예: 배포 사이트에서 로그인 성공)
+
+## 승인 필요 (T2만)
+- 바꾸는 것, 미리보기 명령(`cdk diff`, `terraform plan` 등), 롤백 방법
 
 ## 열린 질문
 - 아직 정하지 않은 것 (없으면 섹션 생략)
 ```
+
+담당은 /kit:harness의 역할(Coder, Validator, Reporter) 또는 "나"(사용자만 할 수 있는 확인). 혼자 하는 작은 기능이면 담당은 생략해도 된다.
+등급(`tier`)은 영향 범위로 정한다. 배포, push, AWS·IAM·시크릿 변경, 데이터 삭제가 들어가면 T2다.
 
 규칙: 내용은 한국어, 코드·파일명은 원문. 작은 기능이면 섹션을 줄여 한 화면 안에 들어오게 쓴다. 빈 섹션은 생략한다.
 
@@ -97,7 +104,7 @@ status: draft          # draft → approved → in-progress → done
 
 1. 기획서 핵심(목표, 범위, 작업 단계)을 짧게 보여주고 승인을 받는다. 수정 요청은 반영한다.
 2. 승인되면 `status: approved`로 바꾸고 기획서만 커밋한다: `docs(plan): <기능> 기획`
-3. 바로 구현을 시작할지 묻는다. 구현을 시작하면:
+3. 바로 구현을 시작할지 묻는다. 구현은 /kit:harness 절차(작업 카드, 독립 검증, T2 미리보기)를 따른다. 구현을 시작하면:
    - `status: in-progress`로 바꾸고, 작업 단계 체크박스를 진행하면서 체크한다
    - 이 기획에 해당하는 커밋은 본문에 `Refs: docs/plans/<파일>`을 적는다
    - 전부 끝나면 `status: done`
