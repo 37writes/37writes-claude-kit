@@ -44,7 +44,7 @@ types/index.d.ts                 패널의 $.state 계약 (plugin.json "types")
 - **kit 프로젝트 판정**: `docs/devlog/`가 있는 git 레포. 훅은 kit 프로젝트에서만 동작한다.
 - **등록부** `~/.config/37writes-kit/repos.txt`: macOS 개인정보 보호(TCC) 때문에 터미널이 `~/Documents`, `~/Desktop` 폴더 목록을 읽지 못한다. 그래서 /kit:weekly는 폴더 탐색 대신 등록부를 쓴다. SessionStart 훅과 `install_githook.py`가 등록한다.
 - **git 훅은 clone으로 전파되지 않는다** → SessionStart 훅이 kit 레포에서 commit-msg 훅이 없으면 설치한다. 기존 훅이나 `core.hooksPath`(husky 등)가 있으면 건드리지 않는다.
-- **harness 스킬**: AWS Deep Insight 역할 구조를 옮긴 작업 절차 (T0~T2 등급, 작업 카드, 워커 보고 양식, 독립 검증). Orca가 있으면 Orca 워커, 없으면 서브에이전트, 그것도 아니면 단일 세션 + /kit:check. 프로필의 "작업 등급" 줄이 이 스킬로 안내하므로 모델 호출을 막지 않는다. 배경은 블로그 시리즈 "AI 에이전트에게 팀을 만들어 주기"(2026-10-28).
+- **harness 스킬**: AWS Deep Insight 역할 구조를 옮긴 작업 절차 (T0~T2 등급, 작업 지시, 워커 보고, 독립 검증). Orca가 있으면 워커 실행·메시지·대기·정리는 Orca orchestration 안내서(`orca skills get orchestration`)에 맡기고 kit 규칙과 겹치게 쓰지 않는다 (작업 지시 = Orca Task spec 5항목, 보고 = `worker_done`, T2 승인 = `gate-create`). 없으면 서브에이전트, 그것도 아니면 단일 세션 + /kit:check. 프로필의 "작업 등급" 줄이 이 스킬로 안내하므로 모델 호출을 막지 않는다. 배경은 블로그 시리즈 "AI 에이전트에게 팀을 만들어 주기"(2026-10-28).
 - **스킬 토큰 비용**: SKILL.md의 `description`은 매 요청 컨텍스트에 들어가므로 짧게. 사용자가 직접 부르는 스킬(init, plan, blog, release, weekly)은 `disable-model-invocation: true`.
 - **스킬에서 스크립트 경로**: 스킬 로드 시 "Base directory for this skill"이 주어지므로 `<base directory>/../../scripts/xxx.py`로 참조한다.
 - **사용자 보고 언어**: 한국어. 비대화(`claude -p`) 실행에서 영어로 보고한 적이 있어 일부 스킬에 명시했다.

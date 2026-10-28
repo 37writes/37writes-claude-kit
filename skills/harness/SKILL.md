@@ -7,6 +7,7 @@ description: 작업을 위험도(T0~T2)로 나눠 계획·구현·독립 검증�
 
 AWS Deep Insight의 역할 구조(Coordinator → Planner → 사람 승인 → Supervisor → Coder/Validator/Reporter → Tracker)를 개발 작업에 옮긴 절차다.
 대화 세션이 Coordinator·Planner·Supervisor·Tracker를 맡고, **사용자가 Plan Reviewer**, 워커(Orca 워커 또는 서브에이전트)가 Coder·Validator를 맡는다.
+워커 실행·메시지·정리는 Orca 같은 실행 도구가 맡고, 이 스킬은 등급, 계획, 검증 기준, 기록을 맡는다.
 
 사용자에게 하는 질문과 보고는 모두 **한국어**로 한다.
 
@@ -34,40 +35,43 @@ AWS Deep Insight의 역할 구조(Coordinator → Planner → 사람 승인 → 
 
 ## 3. 실행 (Supervisor)
 
-단계 사이 의존이 없으면 병렬로, 있으면 순서대로 맡긴다. **Validator는 Coder와 다른 워커**로 한다.
+이 스킬은 **무엇을 맡길지**(단계, 범위, 완료 조건, 금지)를 정한다. 워커를 띄우고 주고받고 정리하는 방법은 실행 도구의 규칙을 따른다.
+의존이 없는 단계는 병렬로 맡긴다. **Validator는 Coder와 다른 워커**로 한다 (가능하면 다른 에이전트나 모델).
 
 **워커 고르기** (위에서부터 가능한 것)
-1. **Orca** (`command -v orca`가 있고 Orca 안에서 실행 중): Orca의 orchestration 스킬이 있으면 그 절차를 따른다. 기본 흐름은 `orca orchestration run-create` → `task-create` → `worker-start` → `check --wait` → `worker-release`. 실패한 단계만 `worker-start --retry-of`로 다시 돌린다. 기다릴 때는 2~3분 단위로 끊어 사용자 메시지를 놓치지 않는다.
+1. **Orca** (`command -v orca`가 있을 때): Orca의 orchestration 스킬을 불러 그 규칙을 그대로 따른다 (`orca skills get orchestration`이 설치된 버전에 맞는 안내서를 준다). 대기 시간, 재시도, 워커 정리는 그 안내서대로 하고 여기서 따로 정하지 않는다. Orca 감독은 사용자가 요청해야 시작하므로, 계획을 보여 줄 때 "Orca 워커로 진행"을 함께 확인받는다.
 2. **서브에이전트** (Agent 도구): Coder는 `isolation: "worktree"`, Validator는 새 서브에이전트로 띄운다 (새 컨텍스트라 Coder의 판단에 끌려가지 않는다).
 3. **단일 세션**: 직접 구현하고, 검증은 /kit:check 절차로 한다. 같은 컨텍스트라 독립성이 약하다는 점을 보고에 적는다.
 
-**작업 카드** (워커에게는 대화 전체가 아니라 이것만 준다)
+**작업 지시** (Orca Task spec과 같은 5항목. 워커에게는 대화 전체가 아니라 이것만 준다)
 ```text
-목표: <계획 단계 id와 한 문장>
-범위: <건드려도 되는 파일·폴더>
-완료 확인: <실행할 명령과 기대 결과>
-금지: push, 배포, AWS 쓰기, 시크릿 출력, 범위 밖 파일 수정. 막히면 추측하지 말고 질문으로 올린다.
-보고: 아래 양식, 150단어 이내. 긴 출력은 파일로 남기고 경로만.
+대상: <계획 단계 id, 다룰 파일·컴포넌트·환경>
+변경: <만들어야 할 결과>
+제약: <지킬 규칙>. push, 배포, AWS 쓰기, 시크릿 출력 금지. 막히면 추측하지 말고 질문으로 올린다.
+담당 범위: <이 워커가 수정해도 되는 파일·폴더>
+완료 증거: <실행할 명령과 기대 결과>
 ```
-Codex 등 Claude가 아닌 에이전트는 CLAUDE.md를 읽지 않는다. 레포에 `AGENTS.md`가 없으면 위 금지 규칙과 보고 양식으로 만들자고 제안하고, 작업 카드에도 규칙을 그대로 붙여 넣는다.
+Codex 등 Claude가 아닌 에이전트는 CLAUDE.md를 읽지 않는다. 레포에 `AGENTS.md`가 없으면 위 제약과 보고 방법으로 만들자고 제안하고, 작업 지시에도 제약을 그대로 붙여 넣는다.
 
-## 4. 워커 보고 양식
+## 4. 워커 보고
 
-```text
-STATUS: SUCCESS | PARTIAL | ERROR
-DONE: <끝낸 계획 단계 id>
-CHANGED: <바뀐 파일 경로>
-CHECKS: <실행한 명령 → 결과>
-NOT DONE / RISKS: <남은 일, 위험>
-```
+- **Orca**: `worker_done` 형식을 쓴다 (3문장 요약, `--outcome succeeded|failed`, `--files-modified`, 긴 출력은 `--report-path`). 요약에 실행한 검사와 결과, 남은 위험을 넣게 한다.
+- **서브에이전트·단일 세션**: 아래 양식, 150단어 이내. 긴 출력은 파일로 남기고 경로만.
+  ```text
+  STATUS: SUCCESS | PARTIAL | ERROR
+  DONE: <끝낸 계획 단계 id>
+  CHANGED: <바뀐 파일 경로>
+  CHECKS: <실행한 명령 → 결과>
+  NOT DONE / RISKS: <남은 일, 위험>
+  ```
 
-ERROR나 테스트 실패는 오류 출력과 함께 같은 워커에게 돌려보내 고치게 한다. 두 번 실패하면 사용자에게 올린다.
+실패나 테스트 오류는 오류 출력과 함께 다시 맡겨 고치게 한다 (Orca면 안내서의 재시도 절차). 두 번 실패하면 사용자에게 올린다.
 
 ## 5. 검증 (Validator)
 
 Coder의 보고를 믿지 않고 **처음부터 다시** 확인한다.
 - 프로필의 빌드·테스트 명령 재실행 (/kit:check의 2·3단계)
-- diff가 작업 카드의 범위 안인지 (`git diff --stat <base>...HEAD`)
+- diff가 작업 지시의 담당 범위 안인지 (`git diff --stat <base>...HEAD`)
 - 시크릿 검사: `git diff <base>...HEAD | grep -nE 'AKIA|secret|api[_-]?key|BEGIN .*PRIVATE'`
 - 숫자·집계는 보고서 값을 베끼지 않고 다시 계산한다
 - 권한 변경은 실제 실행 역할 기준으로 확인한다. 관리자 키로 돌린 로컬 테스트는 권한 누락을 가린다. AWS면 `aws iam simulate-principal-policy`로 작업이 쓰는 모든 액션을 한 번에 확인한다 (로그에는 처음 막힌 권한만 찍힌다)
@@ -75,12 +79,12 @@ Coder의 보고를 믿지 않고 **처음부터 다시** 확인한다.
 ## 6. T2 적용
 
 1. 미리보기를 실행하고 바뀌는 것만 요약해 보여준다 (예상 밖 변경이 있으면 멈춘다).
-2. 명시적 승인 후 적용한다. 자동 모드나 훅이 막으면 **우회하지 않는다.** 명령을 보여 주고 사용자가 `! <명령>`으로 직접 실행하게 한다.
+2. 명시적 승인 후 적용한다. Orca로 여러 단계를 돌리는 중이면 적용 단계를 Orca의 승인 게이트(`gate-create`)로 막아 두고, 승인받으면 푼다 (방법은 Orca 안내서). 자동 모드나 훅이 막으면 **우회하지 않는다.** 명령을 보여 주고 사용자가 `! <명령>`으로 직접 실행하게 한다.
 3. 적용 후 계획의 완료 조건(사용자가 보는 결과)까지 확인한다. 사용자만 할 수 있는 확인(로그인한 화면 등)은 다음 할 일로 남긴다.
 
 ## 7. 병합과 기록 (Tracker, Reporter)
 
 - 검증을 통과한 워커 브랜치를 병합한다. 커밋은 /kit:commit 규칙, 본문에 `Refs: docs/plans/<파일>`.
 - 계획 체크박스를 `[x]`로 바꾸고 단계별 결과를 한 줄씩 덧붙인다. 모두 끝나면 `status: done`.
-- 정리: 병합한 worktree는 `git worktree remove`, 브랜치는 `git branch -d`. Orca면 Task 상태를 실제와 맞추고 워커를 release한다. 남은 worktree가 있으면 목록으로 보고한다.
+- 정리: Orca 워커는 Orca 안내서의 완료 정산을 따른다 (`worker_done`이 Task 상태를 정리하므로 `task-update`로 다시 바꾸지 않는다). Orca 밖에서 만든 worktree는 병합 후 `git worktree remove`, 브랜치는 `git branch -d`. 남은 worktree가 있으면 목록으로 보고한다.
 - 작업 단위가 끝나면 /kit:devlog로 기록한다. 남은 확인은 "다음 할 일"에 적는다 (다음 세션이 이어받는다).

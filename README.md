@@ -28,7 +28,7 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `/kit:commit` | 커밋할 때 | 변경을 논리 단위로 나눠 `type(scope): 한국어 요약` 형식으로 커밋 |
 | `/kit:devlog` | 작업 단위가 끝났을 때 | `docs/devlog/YYYY-MM.md`에 정해진 형식으로 작업 로그 기록 |
 | `/kit:plan` | 새 기능을 시작할 때 | 코드를 먼저 읽고 추천값이 달린 질문으로 `docs/plans/` 기획서 작성 (등급, 단계별 담당·완료 조건) |
-| `/kit:harness` | 기능·버그·배포·권한 작업을 시작할 때 (Claude가 알아서 부름) | 위험도 T0~T2 분류 → 계획 → 워커(Orca/서브에이전트)에게 작업 카드 → 독립 검증 → T2는 승인·미리보기 → 기록·정리 |
+| `/kit:harness` | 기능·버그·배포·권한 작업을 시작할 때 (Claude가 알아서 부름) | 위험도 T0~T2 분류 → 계획 → 워커(Orca/서브에이전트)에게 작업 지시 → 독립 검증 → T2는 승인·미리보기 → 기록·정리 |
 | `/kit:til` | 개발 중 새 개념을 알았을 때 | `~/Documents/dev/my-notes/til/`에 개념 메모 저장 (블로그 원료) |
 | `/kit:blog` | 글을 쓰고 싶을 때 | TIL 메모나 지난 대화를 블로그 글(시리즈 가능)로 완성, 회사 정보 필터링, 확인 후 37writes.github.io에 발행 |
 | `/kit:check` | 머지·배포 전 | 프로필의 빌드·테스트 실행 + 언어별 체크리스트 리뷰, 보고 후 승인된 것만 수정 |
