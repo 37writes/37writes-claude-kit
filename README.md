@@ -31,6 +31,7 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `/kit:harness` | 기능·버그·배포·권한 작업을 시작할 때 (Claude가 알아서 부름) | 위험도 T0~T2 분류 → 계획 → 워커(Orca/서브에이전트)에게 작업 지시 → 독립 검증 → T2는 승인·미리보기 → 기록·정리 |
 | `/kit:til` | 개발 중 새 개념을 알았을 때 | `~/Documents/dev/my-notes/til/`에 개념 메모 저장 (블로그 원료) |
 | `/kit:blog` | 글을 쓰고 싶을 때 | TIL 메모나 지난 대화를 블로그 글(시리즈 가능)로 완성, 회사 정보 필터링, 확인 후 37writes.github.io에 발행 |
+| `/kit:design` | 화면을 만들거나 고칠 때 (Claude가 알아서 부름) | 캡처 → AI·템플릿 티 체크리스트 진단 → 방향 2~3개 중 선택 → 색·글꼴 토큰(대비 계산) → 테마 덮어쓰기 적용 → 전/후 캡처 비교 |
 | `/kit:check` | 머지·배포 전 | 프로필의 빌드·테스트 실행 + 언어별 체크리스트 리뷰, 보고 후 승인된 것만 수정 |
 | `/kit:release` | 배포할 때 | 버전·릴리즈 노트·CHANGELOG, Amplify 배포 확인 / exe 묶음·체크섬 / 앱(첫 배포 때 확정) |
 | `/kit:weekly` | 주 1회 | 모든 kit 프로젝트의 devlog·커밋·TIL·블로그를 모아 주간 정리 (my-notes/weekly) |
@@ -72,3 +73,4 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 - [ ] docs (회사/대학원 양식), 애드센스 연결 (개인 도메인 구매 후)
 - [x] check, release, weekly
 - [x] harness (AWS Deep Insight식 에이전트 작업 절차), 대화 기반 블로그 시리즈
+- [x] design (AI 티 안 나는 화면, tech-blog 종이 노트로 시범)
