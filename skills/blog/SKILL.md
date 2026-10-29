@@ -1,36 +1,93 @@
 ---
 name: blog
-description: TIL 메모나 지난 대화를 기술 블로그(37writes.github.io) 글로 완성하고(도표 포함), 회사 정보를 걸러낸 뒤 확인을 받아 발행한다.
-disable-model-invocation: true
+description: 대화나 TIL 메모를 기술 블로그 글로 쓴다. "블로그로 쓰자" 같은 요청에 쓴다. 글마다 전용 worktree, 승인 후 main 병합.
 ---
 
-# blog: TIL 메모·대화 → 블로그 발행
+# blog: 대화·TIL 메모 → 블로그 글 (글마다 worktree, 승인 후 발행)
 
 | 저장소 | 경로 | 공개 |
 |---|---|---|
 | 메모 (원료) | `~/Documents/dev/my-notes/til/` | 비공개 |
-| 블로그 | `~/Documents/dev/tech-blog` (GitHub `37writes/37writes.github.io`, Jekyll + Chirpy) | 공개 |
+| 블로그 본체 | `~/Documents/dev/tech-blog` (GitHub `37writes/37writes.github.io`, Jekyll + Chirpy) | 공개 |
 
 사용자에게 하는 질문과 보고는 모두 **한국어**로 한다.
 
 블로그는 공개되고 애드센스 수익을 목표로 한다. **회사 정보 유출 방지**와 **독자에게 가치 있는 글**이 최우선이다.
 
-## 1. 메모 고르기
+## 흐름
 
-- 두 저장소에서 `git pull --ff-only`로 최신화한다 (원격이 있을 때).
-- 인자로 주제나 파일이 오면 그것을 쓴다.
-- 없으면 `status: draft`인 메모를 날짜순으로 표로 보여준다: 제목, 날짜, category, tags.
-  AskUserQuestion으로 고르게 한다. 같은 주제의 메모 여러 개를 한 글로 묶는 것도 제안할 수 있다.
+글 하나 = tech-blog worktree 하나(브랜치 `post-<slug>`) = Orca 보드 카드 하나. 본체 main은 사용자가 승인한 글만 받는다.
 
-**대화가 원료일 때** ("그 세션에서 한 작업을 글로 써줘")
-- 지난 Claude Code 대화에서 글감을 뽑는다. 스크립트는 이 스킬의 base directory 기준 `../../scripts/session_text.py`:
+| 단계 | 어디서 | 내용 |
+|---|---|---|
+| A | 출발 세션 (어느 프로젝트든) | 재료를 모아 브리프 작성, 시리즈면 편 구성 확인 |
+| B | 출발 세션 | 글 worktree 생성, 브리프 전달, 에이전트 실행 후 **인계 끝** |
+| C | 글 worktree | 2~5단계: 글 쓰기, 그림, 필터링, 확인. 브랜치에 커밋 |
+| D | 글 worktree → 본체 | 사용자 **명시적 승인** 뒤에만: main에 병합, push, 정리 (6~7단계) |
+
+사용자가 "이 내용 블로그로 쓰자"처럼 말로 시작해도 되고 /kit:blog로 불러도 된다. 지금 있는 곳이 글 worktree(`.blog-brief.md`가 있고 브랜치가 `post-*`)면 A·B는 건너뛰고 C부터 한다.
+
+## A. 출발 세션: 재료 모으기
+
+원료는 현재 대화 + 그 프로젝트의 결과 파일이다. 필요하면 지난 대화와 TIL 메모를 더한다.
+
+- **현재 대화**: 최종 결정과 실제로 만든 파일을 기준으로 정리한다. 대화는 결론이 여러 번 바뀐다. 중간에 버린 안은 "처음엔 이렇게 했다가 바꿨다"처럼 이유가 있을 때만 쓴다.
+- **결과 파일**: 그 프로젝트의 문서·설정을 읽어 대화와 맞춰 본다.
+- **지난 대화** ("그 세션에서 한 작업을 글로"): 스크립트는 이 스킬의 base directory 기준 `../../scripts/session_text.py`.
   `python3 "<base directory>/../../scripts/session_text.py" <그 대화를 연 폴더> --list` → 대화 고르기
   `python3 "<base directory>/../../scripts/session_text.py" <폴더> --session <ID> > /tmp/session.txt` → 전체 텍스트 (길면 `--grep 키워드`)
   Orca worktree처럼 폴더 이름을 모르면 `ls ~/.claude/projects/ | grep <이름 일부>`로 찾는다.
-- 대화는 결론이 여러 번 바뀐다. **최종 결정과 실제로 만든 파일**을 기준으로 쓰고, 그 프로젝트의 결과 파일(문서, 설정)도 읽어 대화와 맞춰 본다. 중간에 버린 안은 "처음엔 이렇게 했다가 바꿨다"처럼 이유가 있을 때만 쓴다.
+- **TIL 메모**: 인자로 주제나 파일이 오면 그것을 쓴다. 없으면 `my-notes/til/`에서 `status: draft` 메모를 날짜순 표(제목, 날짜, category, tags)로 보여주고 AskUserQuestion으로 고르게 한다. 같은 주제의 메모 여러 개를 한 글로 묶는 것도 제안할 수 있다. (`git pull --ff-only`로 최신화)
 - 대화에서 인용한 외부 글(공식 문서, 블로그)은 원문을 다시 열어 제목·날짜·수치를 확인한다.
-- 내용이 많으면 **시리즈**로 나눈다 (아래 "시리즈"). 편 구성(편별 제목과 다룰 내용)을 먼저 보여주고 고르게 한다.
-- 메모가 아니므로 7단계(메모 정리)는 하지 않는다. 남길 개념이 있으면 /kit:til을 제안한다.
+- 내용이 많으면 **시리즈**로 나눈다 (2단계 "시리즈"). 편 구성(편별 제목과 다룰 내용)을 보여주고 AskUserQuestion으로 확인받는다. 편마다 글 worktree를 따로 만든다.
+
+**브리프** (글 worktree의 에이전트는 이 대화를 볼 수 없으므로 이것만으로 쓸 수 있어야 한다. 글 하나당 하나):
+- 주제와 독자, 제안 제목(시리즈면 시리즈 이름과 이 편의 번호·제목·다룰 내용·전체 편 목록)
+- 핵심 사실과 **최종 결정**, 버린 안과 그 이유
+- 읽을 원료 파일의 **절대 경로**, 대화 폴더·세션 ID (`session_text.py` 인자), TIL 메모 경로(있으면)
+- 그 프로젝트 CLAUDE.md 프로필의 **구분**(회사/개인/대학원)과 **걸러야 할 회사 관련 항목**(회사·서비스·고객사·레포 이름, 도메인, 계정 ID 등 알고 있는 것을 구체적으로)
+- 확인된 사용자 요구(어조, 넣을 것, 뺄 것)
+- 메모가 원료인지 여부 (7단계용)
+
+## B. 글 worktree 만들고 인계
+
+`<main>` = 블로그 본체 `~/Documents/dev/tech-blog`(절대 경로로 풀어 쓴다), `<slug>` = 글의 영어 slug.
+
+```sh
+orca worktree create --repo path:<main> --name post-<slug> --no-parent --base-branch origin/main --setup skip --comment "<주제>" --json
+orca worktree set --worktree id:<id> --display-name "[블로그] <제목>" --workspace-status in-progress
+```
+- `<id>`와 경로는 create의 JSON 출력에서 읽는다. 같은 이름이 이미 있으면 사용자에게 묻는다 (이어 쓰는 글일 수 있다).
+- `--no-parent`: 출발 세션의 worktree와 부모-자식으로 묶지 않는다 (블로그 글은 독립 작업).
+- 브리프를 `<worktree>/.blog-brief.md`에 쓰고, **커밋 없이** 무시되게 한다. 블로그 `.gitignore`는 건드리지 않는다:
+  ```sh
+  EX="$(git -C <worktree> rev-parse --git-common-dir)/info/exclude"
+  grep -qx '.blog-brief.md' "$EX" || echo '.blog-brief.md' >> "$EX"
+  ```
+  (info/exclude는 본체와 모든 worktree가 공유하지만 커밋되지 않는다.)
+- 에이전트 실행:
+  ```sh
+  orca agent launch --agent claude --worktree id:<id> --prompt "블로그 글 워크트리다. .blog-brief.md를 읽고 blog 스킬의 글 워크트리 절차(C)로 진행" --json
+  ```
+- 사용자에게 **카드 이름("[블로그] 제목")과 worktree 경로**를 알린다. 시리즈면 편마다. 출발 세션은 여기서 끝이다. 글 worktree를 지켜보거나 대신 쓰지 않는다 (인계).
+- **Orca가 없으면**: `git -C <main> worktree add ~/orca/workspaces/tech-blog/post-<slug> -b post-<slug> origin/main` (또는 본체 옆 `../tech-blog-post-<slug>`)로 만들고, 브리프와 exclude는 같게 한 뒤, 사용자에게 "그 폴더에서 claude를 열어 '.blog-brief.md 읽고 blog 스킬 C 절차로 진행'이라고 하세요"라고 안내한다.
+
+## C. 글 worktree: 쓰기부터 확인까지
+
+브랜치 `post-<slug>`의 이 worktree에서 한다. 먼저 `.blog-brief.md`를 읽고, 적힌 원료 파일·세션을 직접 열어 확인한다. 브리프가 부족하면 지어내지 말고 사용자에게 묻는다. 그다음 2~5단계를 진행한다.
+
+**Jekyll 빌드 (worktree에서)**: `vendor/bundle`과 `_site`는 추적되지 않아 본체에만 있다. 이 Mac에서 확인한 방법:
+```sh
+M=~/Documents/dev/tech-blog
+export PATH=/opt/homebrew/opt/ruby/bin:$PATH          # 시스템 ruby 2.6은 안 됨, Homebrew ruby 3.4 필요
+BUNDLE_PATH=$M/vendor/bundle JEKYLL_ENV=production bundle exec jekyll build
+BUNDLE_PATH=$M/vendor/bundle bundle exec htmlproofer _site --disable-external
+```
+- 본체의 gem(`vendor/bundle`)을 `BUNDLE_PATH`로 가리키면 된다. 복사·`bundle install` 불필요. `Gemfile.lock`은 첫 실행에 생기고 `.gitignore` 대상이다.
+- `_site`는 worktree 안에 생긴다 (무시됨). 미리보기 서버는 `_site`에서 띄운다 (3단계 검수).
+- 안 되면 먼저 `ruby -v`(3.4)와 `ls $M/vendor/bundle/ruby/`를 확인한다. 다른 컴퓨터는 본체에서 `bundle install` 한 번이 필요하다.
+
+**커밋**: 글 파일과 그림(`_includes/figures/<slug>/`)만 브랜치에 커밋한다: `docs(post): <제목>` (시리즈 한 편이면 `docs(post): <시리즈 이름> N편 <제목>`). 도표 CSS를 바꿨으면 `feat(blog): ...`를 따로. `.blog-brief.md`와 `_site`는 커밋하지 않는다. **push도 main 병합도 아직 하지 않는다.**
 
 ## 2. 글 쓰기
 
@@ -71,7 +128,7 @@ description: "검색 결과에 보일 요약 120~160자"
 ## 3. 그림 넣기
 
 긴 설명보다 잘 그린 도표 한 장이 먼저 이해된다. 글마다 **핵심 개념 1개**(필요하면 어려운 대목에 1개 더)를 도표로 넣는다.
-이미 발행한 글에 그림만 넣을 때도 이 단계부터 하고 5·6단계로 간다 (4단계 필터링은 그림 글자에 적용).
+이미 발행한 글에 그림만 넣을 때도 글 worktree를 만들어 이 단계부터 하고 5·6단계로 간다 (4단계 필터링은 그림 글자에 적용).
 아래에서 `<scripts>` = `<base directory>/../../scripts`.
 
 **무엇을 그릴지**
@@ -115,7 +172,7 @@ description: "검색 결과에 보일 요약 120~160자"
 
 ## 4. 공개 전 필터링 (반드시)
 
-메모의 `category` 값에 따라 다르게 처리하고, **무엇을 바꿨는지 목록으로 보고한다.**
+브리프의 **구분**(메모가 원료면 메모의 `category`)에 따라 다르게 처리하고, **무엇을 바꿨는지 목록으로 보고한다.**
 
 **회사**
 - 회사명, 제품·서비스명, 고객사명, 내부 프로젝트·레포 이름 → 삭제하거나 "사내 서비스", "API 서버" 같은 일반 표현으로
@@ -129,30 +186,38 @@ description: "검색 결과에 보일 요약 120~160자"
 
 **공통 (모든 글)**
 - 비밀번호, API 키, 토큰, 개인 이메일·전화번호, 로컬 경로의 사용자 이름(`/Users/이름/`) → 반드시 제거
-- 대화가 원료면 회사 작업이 섞여 있기 쉽다. 그 대화를 연 레포의 CLAUDE.md 프로필 **구분**을 기준으로 위 규칙을 적용하고, 마지막에 글 파일 전체를 grep으로 점검한다 (회사·서비스·레포 이름, 계정 ID 12자리 `[0-9]{12}`, `AKIA`, `/Users/`, 이메일 `@`).
+- 대화가 원료면 회사 작업이 섞여 있기 쉽다. 브리프에 적힌 구분과 걸러야 할 항목을 기준으로 위 규칙을 적용하고, 마지막에 글 파일 전체를 grep으로 점검한다 (회사·서비스·레포 이름, 계정 ID 12자리 `[0-9]{12}`, `AKIA`, `/Users/`, 이메일 `@`).
 
 ## 5. 확인
 
 사용자에게 보여준다:
-1. 제목, 카테고리, 태그, 설명
+1. 제목, 카테고리, 태그, 설명, 브랜치와 worktree 경로
 2. 글 전문 (길면 구성 요약 + 핵심 부분)
 3. 필터링 보고: "바꾼 것" 목록. 회사·대학원이 아니어도 공통 항목 점검 결과를 한 줄로.
 4. 그림: 캡처(밝은·어두운·모바일)와 검수에서 고친 점
 
-수정 요청을 반영하고, **명시적인 발행 승인**을 받는다.
+수정 요청은 브랜치에 커밋으로 반영하고, **명시적인 발행 승인**을 받는다. 승인 전에는 본체 main에 아무것도 하지 않는다.
 
-## 6. 발행
+## 6. 발행 (D, 승인 뒤에만)
 
-1. 블로그 저장소에서 글 파일과 그림(`_includes/figures/<slug>/`)만 커밋: `docs(post): <제목>` (시리즈는 한 커밋으로: `docs(post): <시리즈 이름> 시리즈 N편`). 도표 CSS를 바꿨으면 `feat(blog): ...`
-2. `git push origin main` (위험 명령 확인 훅이 한 번 더 묻는다)
-3. 배포 확인: `gh run list -R 37writes/37writes.github.io -L 1`로 "Build and Deploy"가 success가 될 때까지 기다린다 (보통 1분 안팎). 실패하면 `gh run view --log-failed`로 원인을 보고한다.
-4. 글 주소를 알려준다 (시리즈면 편마다).
+1. 본체 `<main>`이 `main` 브랜치이고 깨끗한지 확인한다 (`git -C <main> status -sb`). 아니면 멈추고 사용자에게 알린다. 그다음 `git -C <main> pull --ff-only`.
+2. main이 앞서갔으면 글 worktree에서 `git fetch origin && git rebase origin/main`. 충돌이 나면 멈추고 보고한다. 병합 대상이 바뀌었으니 빌드를 다시 돌려 확인한다.
+3. 본체에서 `git -C <main> merge --ff-only post-<slug>` (브랜치는 같은 저장소를 공유하므로 바로 보인다)
+4. `git -C <main> push origin main` (위험 명령 확인 훅이 한 번 더 묻는다)
+5. 배포 확인: `gh run list -R 37writes/37writes.github.io -L 1`로 "Build and Deploy"가 success가 될 때까지 기다린다 (보통 1분 안팎). 실패하면 `gh run view --log-failed`로 원인을 보고한다.
+6. 글 주소를 알려준다 (시리즈면 편마다).
+7. **정리** (배포 성공 뒤): 
+   ```sh
+   orca worktree set --worktree id:<id> --workspace-status completed
+   orca worktree rm --worktree id:<id> --force --json     # worktree와 post-<slug> 브랜치 삭제
+   ```
+   자기 worktree를 지우면 이 에이전트 세션도 끝나므로 **마지막에** 한다. 먼저 사용자에게 주소와 정리 사실을 알린다. 브랜치가 남으면(`orca`가 병합을 증명하지 못한 경우) `git -C <main> branch -d post-<slug>`로 지운다 (이미 병합돼 `-D`는 필요 없다). Orca가 없었으면 `git -C <main> worktree remove <경로>`.
 
 ## 7. 메모 정리
 
-원본 메모의 front matter를 갱신한다:
+원료가 TIL 메모일 때만 한다. 본체 main에서 `my-notes` 원본 메모의 front matter를 갱신한다:
 ```yaml
 status: posted
 posted_url: https://37writes.github.io/posts/<slug>/
 ```
-my-notes에서 커밋 (`docs(til): <제목> 발행 표시`)하고, 원격이 있으면 push 여부를 묻는다.
+my-notes에서 커밋 (`docs(til): <제목> 발행 표시`)하고, 원격이 있으면 push 여부를 묻는다. 대화가 원료였으면 하지 않고, 남길 개념이 있으면 /kit:til을 제안한다.
