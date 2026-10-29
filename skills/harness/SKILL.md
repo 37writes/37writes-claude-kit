@@ -46,16 +46,16 @@ AWS Deep Insight의 역할 구조(Coordinator → Planner → 사람 승인 → 
 **Orca 배치와 보드** (실행 방법은 Orca 안내서, 여기서는 어디에 두고 카드를 어떻게 보일지만 정한다)
 - **작업 하나 = worktree 하나 = 보드 카드 하나.** 기획서(또는 버그) 하나를 한 worktree에서 끝낸다. 세션이 레포 본체(main)에 있거나 지금 worktree에 끝나지 않은 다른 작업이 있으면 새 worktree를 제안한다 (`orca worktree create --repo id:<repoId> --name <기획서 slug> --no-parent --json`). 거절하면 지금 worktree에서 하고 카드에 작업이 섞인다고 알린다.
 - 대상 worktree 지정: 지휘 세션이 그 worktree 안에 있으면 `current`, 아니면 create가 돌려준 `id:<repoId>::<path>`를 워커 배치와 카드 갱신에 똑같이 쓴다.
-- **역할 하나 = 탭 하나.** Coder·Validator는 그 worktree에 `worker-start`로 차례로 띄운다 (Validator는 Coder의 커밋을 같은 폴더에서 검사한다). `dispatch`로 붙인 탭은 끝나도 `worker-release`로 닫히지 않는다.
-- **같은 시간에 파일을 고치는 워커가 둘 이상**일 때만 각자 하위 worktree(`--worktree new-child`)에 두고 담당 범위를 겹치지 않게 나눈다. 끝나면 작업 worktree로 병합한다. 따로 병합·배포할 수 있는 단위면 처음부터 별도 작업(기획서)으로 나눈다. git이 없는 폴더 워크스페이스는 하위 worktree 없이 같은 폴더에서 차례로 한다.
-- **카드 갱신**: 단계가 바뀔 때 `orca worktree set --worktree <대상> --workspace-status <상태> --comment "<지금 하는 일 한 줄>"`. 사용자 확인을 기다릴 때는 `--unread`도 붙인다.
+- **역할 하나 = 탭 하나.** Coder·Validator는 그 worktree에 `worker-start`로 차례로 띄운다 (Validator는 Coder의 커밋을 같은 폴더에서 검사한다). 정산 뒤에도 남은 탭(사용자가 입력해 사용자 소유로 바뀐 탭 등)은 마지막 보고에 목록으로 알린다.
+- **같은 시간에 파일을 고치는 워커가 둘 이상**일 때만 각자 하위 worktree에 두고 담당 범위를 겹치지 않게 나눈다. 지휘 세션이 작업 worktree 안에 있으면 `worker-start --worktree new-child`, 밖이면 `orca worktree create --repo id:<repoId> --name <하위 slug> --parent-worktree <대상> --base-branch <작업 브랜치> --json`으로 만든 뒤 돌려받은 id에 띄운다. 끝나면 작업 worktree로 병합한다. 따로 병합·배포할 수 있는 단위면 처음부터 별도 작업(기획서)으로 나눈다. git이 없는 폴더 워크스페이스는 생성·병합·삭제 없이 같은 폴더에서 차례로 한다.
+- **카드 갱신**: 단계가 바뀔 때 `orca worktree set --worktree <대상> --workspace-status <상태> --comment "<지금 하는 일 한 줄>"`. 사용자 확인을 기다릴 때는 `--unread`도 붙인다. 재작업이면 `in-progress`로 되돌리고, 막히거나 보류되면 상태는 두고 comment에 이유와 다음 조치를 적는다. 보드에 사용자 지정 상태가 있으면 대응하는 id를 쓴다.
 
   | 시점 | 상태 | comment 예 |
   |---|---|---|
   | 기획서 작성, 승인 대기 | `todo` | 계획 작성, 승인 대기 |
   | Coder 시작 | `in-progress` | Coder S1 구현 중 |
   | Validator 시작, T2 미리보기 승인·PR 대기 | `in-review` | Validator 재검증 2회차 |
-  | 병합 완료 (push 승인 시 push 후) | `completed` | 병합 a1b2c3d |
+  | 검증과 필요한 적용·병합 끝 (push 승인 시 push 후) | `completed` | 병합 a1b2c3d |
 
 **작업 지시** (Orca Task spec과 같은 5항목. 워커에게는 대화 전체가 아니라 이것만 준다)
 ```text
