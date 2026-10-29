@@ -1,4 +1,5 @@
 """PreToolUse(Bash): 되돌리기 어렵거나 외부로 나가는 명령은 실행 전에 사용자 확인을 받는다."""
+import os
 import re
 import shlex
 
@@ -17,17 +18,41 @@ RULES = [
     (r"\bamplify\s+(delete|publish)\b", "Amplify 삭제/배포"),
     (r"\bcdk\s+(deploy|destroy)\b", "CDK 배포/삭제: AWS 리소스가 바뀝니다 (먼저 cdk diff)"),
     (r"\bterraform\s+(apply|destroy)\b", "Terraform 적용/삭제: 인프라가 바뀝니다 (먼저 terraform plan)"),
-    (r"\bampx\s+(sandbox|pipeline-deploy)\b", "Amplify Gen 2 sandbox/배포: AWS 리소스가 바뀝니다"),
     (r"\baws\s+iam\s+(put|attach|detach|create|update)-", "IAM 권한 변경"),
 ]
 
 
-def deploy_sh(command):
-    """deploy.sh 실행인가. --diff나 --synth가 있는 세그먼트는 미리보기라 통과."""
-    for segment in re.split(r"&&|\|\||;|\|", command):
-        if re.match(r"\s*(sudo\s+)?((ba|z)?sh\s+)?\S*deploy\.sh\b", segment) and not re.search(r"--(diff|synth)\b", segment):
-            return True
-    return False
+def command_words(segment):
+    """세그먼트에서 실행되는 명령과 인자. 환경 변수 대입, sudo/env, bash/sh(+옵션), 경로 접두를 벗긴다."""
+    try:
+        tokens = shlex.split(segment, posix=True)
+    except ValueError:
+        tokens = segment.split()
+    while tokens and (re.match(r"[A-Za-z_]\w*=", tokens[0]) or tokens[0] in ("sudo", "env", "command", "exec")):
+        tokens = tokens[1:]
+    if tokens and os.path.basename(tokens[0]) in ("bash", "sh", "zsh"):
+        tokens = tokens[1:]
+        while tokens and tokens[0].startswith("-"):
+            tokens = tokens[1:]
+    if tokens:
+        tokens[0] = os.path.basename(tokens[0])
+    return tokens
+
+
+def deploy_reasons(command):
+    """deploy.sh(--diff·--synth는 미리보기라 통과)나 ampx sandbox/pipeline-deploy 실행인가."""
+    reasons = []
+    for segment in re.split(r"\n|&&|\|\||;|\|", command):
+        words = command_words(segment)
+        if not words:
+            continue
+        if words[0] == "deploy.sh" and not {"--diff", "--synth"} & set(words[1:]):
+            reasons.append("deploy.sh: 배포 스크립트 (--diff·--synth는 미리보기라 통과)")
+        elif words[0] == "npx" and len(words) > 1 and words[1] == "ampx":
+            words = words[1:]
+        if words[0] == "ampx" and any(w in ("sandbox", "pipeline-deploy") for w in words[1:2]):
+            reasons.append("ampx %s: Amplify Gen 2 AWS 리소스가 바뀝니다" % words[1])
+    return reasons
 
 
 def dangerous_rm(command):
@@ -57,8 +82,7 @@ command = (kitlib.read_input().get("tool_input") or {}).get("command", "")
 reasons = [reason for pattern, reason in RULES if re.search(pattern, command)]
 if dangerous_rm(command):
     reasons.append("rm -rf 대상이 루트/홈/현재 폴더 전체입니다")
-if deploy_sh(command):
-    reasons.append("deploy.sh: 배포 스크립트 (--diff·--synth는 미리보기라 통과)")
+reasons += deploy_reasons(command)
 if reasons:
     kitlib.emit({
         "hookSpecificOutput": {

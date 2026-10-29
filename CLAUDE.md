@@ -73,6 +73,7 @@ types/index.d.ts                 패널의 $.state 계약 (plugin.json "types")
    echo '{"cwd":"<kit 레포 경로>"}' | sh scripts/py.sh scripts/session_start.py
    python3 -c 'import json,sys;print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "git push" | python3 scripts/guard.py
    ```
+   guard 규칙은 `sh scripts/test_guard.sh` (ask/통과 케이스 일괄).
 3. 스킬은 비대화 모드로 실행해 확인 (질문 단계는 못 하므로 프롬프트에 "추천값으로 진행, 커밋/push 하지 마" 등을 덧붙인다):
    ```sh
    cd ~/Documents/dev/kit_test && claude -p --plugin-dir ~/Documents/dev/37writes-claude-kit \
