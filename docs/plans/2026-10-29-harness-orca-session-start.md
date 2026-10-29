@@ -1,7 +1,7 @@
 ---
 title: Orca 세션은 첫 요청부터 harness를 불러 읽고, 다른 모델 의견도 Orca 워커로
 date: 2026-10-29
-status: in-progress
+status: done
 tier: T1
 ---
 
@@ -27,8 +27,10 @@ Orca IDE에서 띄운 Claude 세션이 어느 프로젝트든 첫 요청(질문 
 ## 작업 단계
 - [x] S1. 안내문·harness·README·CLAUDE.md·버전 — Coder(세션) — `claude plugin validate .` 통과, Orca 안/밖 × 프로필 있음/없음/git 아님에서 훅 출력이 기대대로, 변경은 scripts/orca_context.py, skills/harness/, README.md, CLAUDE.md, .claude-plugin/, docs/ 안에서만
   - 결과: validate 통과. 훅 직접 실행 6조합: Orca+프로필(루트·하위 폴더) → 안내만, Orca+프로필 없는 git·git 아님·motion → 안내 + /kit:init 줄, Orca 밖 → 출력 없음, 입력이 JSON이 아니어도 동작
-- [ ] S2. 독립 검증 — Validator(Orca Codex 워커, 같은 worktree 탭) — 위 조합을 직접 다시 실행, 안내문이 harness·Orca 안내서와 어긋나지 않는지, diff 범위·시크릿 검사
-- [ ] S3. 검증 반영, 커밋, 본체 main 병합 — 세션
+- [x] S2. 독립 검증 — Validator(Orca Codex 워커, 같은 worktree 탭) — 위 조합을 직접 다시 실행, 안내문이 harness·Orca 안내서와 어긋나지 않는지, diff 범위·시크릿 검사
+  - 결과: 1회차 FAIL — 훅 44조합·validate·범위·시크릿은 통과, F1 새 두 줄(의견 요청, /kit:init 제안)과 harness 서문이 워커에도 적용되게 읽힘. 2회차(같은 탭) PASS — F1 해소, 44조합·세 역할 시나리오(지휘, 프로필 없는 레포의 워커, 완료 뒤 직접 요청) 일관, 새 지적 0
+- [x] S3. 검증 반영, 커밋, 본체 main 병합 — 세션
+  - 결과: F1을 "지휘 세션"으로 한정(c9addec), 본체 main에 `--ff-only` 병합. 실제 새 Claude 세션 행동은 다음 Orca 세션에서 확인
 
 ## 완료 기준
 - Orca에서 프로필 없는 레포에 Claude를 새로 띄우면 컨텍스트에 "첫 요청 전 kit:harness 로드", "다른 모델 의견은 Orca 워커", "/kit:init 제안"이 들어 있다
