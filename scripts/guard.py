@@ -17,9 +17,17 @@ RULES = [
     (r"\bamplify\s+(delete|publish)\b", "Amplify 삭제/배포"),
     (r"\bcdk\s+(deploy|destroy)\b", "CDK 배포/삭제: AWS 리소스가 바뀝니다 (먼저 cdk diff)"),
     (r"\bterraform\s+(apply|destroy)\b", "Terraform 적용/삭제: 인프라가 바뀝니다 (먼저 terraform plan)"),
+    (r"\bampx\s+(sandbox|pipeline-deploy)\b", "Amplify Gen 2 sandbox/배포: AWS 리소스가 바뀝니다"),
     (r"\baws\s+iam\s+(put|attach|detach|create|update)-", "IAM 권한 변경"),
 ]
 
+
+def deploy_sh(command):
+    """deploy.sh 실행인가. --diff나 --synth가 있는 세그먼트는 미리보기라 통과."""
+    for segment in re.split(r"&&|\|\||;|\|", command):
+        if re.match(r"\s*(sudo\s+)?((ba|z)?sh\s+)?\S*deploy\.sh\b", segment) and not re.search(r"--(diff|synth)\b", segment):
+            return True
+    return False
 
 
 def dangerous_rm(command):
@@ -49,6 +57,8 @@ command = (kitlib.read_input().get("tool_input") or {}).get("command", "")
 reasons = [reason for pattern, reason in RULES if re.search(pattern, command)]
 if dangerous_rm(command):
     reasons.append("rm -rf 대상이 루트/홈/현재 폴더 전체입니다")
+if deploy_sh(command):
+    reasons.append("deploy.sh: 배포 스크립트 (--diff·--synth는 미리보기라 통과)")
 if reasons:
     kitlib.emit({
         "hookSpecificOutput": {
