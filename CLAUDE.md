@@ -13,14 +13,15 @@
 - **테스트**: 자동 테스트 없음 → 아래 "검증 방법"
 - **실행**: 이 Mac은 `~/.zshrc`의 alias `claude='claude --plugin-dir ~/Documents/dev/37writes-claude-kit'`로 항상 로드. 수정 후 Claude Code 재시작하면 반영
 - **배포**: GitHub `main` push (공개 레포). 다른 컴퓨터는 `/plugin update kit@37writes`
+- **push**: 배포 아님 (공개 레포지만 자동 배포가 없다. 다른 컴퓨터는 직접 `/plugin update`)
 - **원격**: GitHub `37writes/37writes-claude-kit`
 
 ### 작업 규칙
 - 커밋: `type(scope): 한국어 요약` 형식 (commit-msg 훅이 검사). 커밋은 /kit:commit 절차를 따른다.
 - 작업 로그: `docs/devlog/YYYY-MM.md`, 의미 있는 작업 단위가 끝나면 /kit:devlog 로 기록한다.
 - 기획서: `docs/plans/`
-- push, 배포, 삭제는 실행 전에 반드시 사용자 확인을 받는다.
-- 작업 등급: T0 바로 처리 / T1 기획서 + 독립 검증 / T2(배포·push·권한·시크릿·데이터 삭제) 사용자 승인 + 미리보기 먼저. 절차는 /kit:harness.
+- 배포, 삭제, 배포가 되는 push는 실행 전에 반드시 사용자 확인을 받는다. push가 배포가 아니면(위 push 줄) 사용자가 커밋을 요청하거나 승인할 때 push까지 승인한 것으로 보고 커밋 뒤 바로 push한다.
+- 작업 등급: T0 바로 처리 / T1 기획서 + 독립 검증 / T2(배포·배포가 되는 push·권한·시크릿·데이터 삭제) 사용자 승인 + 미리보기 먼저. 절차는 /kit:harness.
 <!-- 37writes-kit:profile:end -->
 
 ## 구조
@@ -49,6 +50,7 @@ types/index.d.ts                 패널의 $.state 계약 (plugin.json "types")
 - **design 스킬**: AI·템플릿 기본값 체크리스트로 진단하고 방향을 골라 다시 디자인한다. Claude가 UI를 만들 때 스스로 불러야 하므로 모델 호출 허용. 캡처는 gstack browse 대신 `scripts/shot.py`(Chrome headless) → 이 Mac에서 browse 바이너리가 바로 종료됐고, 다른 컴퓨터에는 gstack이 없을 수 있어서. 시범은 tech-blog "종이 노트"(2026-10-28).
 - **blog 그림**: 글마다 핵심 개념 도표 1개를 직접 쓴 인라인 SVG(블로그 CSS 클래스로 색 지정 → 다크 모드 자동)로 넣고 Codex가 캡처를 보고 검수한다. 검수는 `codex exec`(화면 없음) 대신 Orca 워커 탭(`worker-start --agent codex`, 0.12부터 코디네이터가 띄움)에서 돌리고 결과는 `.blog-review.md`로 받는다 → 사용자가 검수 과정을 보고 싶어 해서 (2026-10-29). GPT 이미지 생성은 이 환경(Bedrock, OpenAI 키 없음)에서 못 써서 기본 절차에서 뺐다. 시범은 tech-blog 글 7편(2026-10-29).
 - **blog 흐름** (0.12.0): 역할 셋. 출발 세션(어느 프로젝트든)은 브리프(`~/.config/37writes-kit/blog/<slug>/brief.md`)만 쓰고, tech-blog 본체의 탭 `블로그 코디네이터`(`scripts/blog_coordinator.py`로 찾음, 없으면 `agent launch`로 띄움)에 `terminal send`로 경로를 보낸 뒤 끝난다. 터미널 행의 `title`은 에이전트가 붙이는 자동 제목이라 사용자가 정한 탭 이름과 달라서 `--include-visual-layouts`의 탭 title로 찾는다 (실측, 2026-10-29). 코디네이터는 본체 main에 머물며 한 Run에서 글마다 `worker-start --worktree new-top-level`로 글 worktree(`post-<slug>`) + 글 워커를 띄우고, `question`에 답하고(필요하면 사용자에게), `worker_done` 뒤 직접 검수(범위·빌드·필터 grep·브리프 대조) + Codex 검수 워커를 돌린다. 수정은 직접 하지 않고 retain한 글 워커 탭에 다시 dispatch한다. 사용자 승인 뒤 코디네이터가 `--ff-only` 병합·push·배포 확인·worktree와 브랜치 정리를 한다 → 예전(0.11)엔 글 worktree 에이전트가 쓰기부터 병합·자기 worktree 삭제까지 혼자 해서 지휘·검수하는 쪽이 없었다 (사용자 결정, 2026-10-29). 워커 보고서(`.blog-report.md`, `.blog-review.md`)는 `info/exclude`로 커밋 없이 무시. 발행 승인은 harness의 `gate-create`가 아니라 코디네이터 탭의 대화(AskUserQuestion)로 받는다 (사용자가 그 탭에서 직접 답하고, 승인 범위에 정리까지 넣는다). 코디네이터는 탭 이름으로 찾으므로 `agent launch --surface terminal`로 띄운다 (chat이면 handle이 없어 못 찾는다). `check --wait`는 240초로 짧게 둔다: 대기 중에는 `terminal send`로 온 새 요청과 사용자 입력이 보이지 않고, Bash 도구 한 명령은 최대 10분이다. 독립 검토(2026-10-29)에서 나온 것: 본체 세션이 코디네이터를 둘 만들 수 있음, batch 전체를 ack 전에 처리, Dispatch 종류(글·수정·검수) 기록, 정리 전 `status --porcelain`·`merge-base --is-ancestor` 확인, `rm -r`은 `${SLUG:?}`로. "블로그로 쓰자" 같은 말로도 시작해야 해서 `disable-model-invocation`을 뺐고, description은 한 줄로 유지했다. Jekyll 빌드는 worktree에 vendor/bundle이 없어서 `PATH`에 Homebrew ruby 3.4 + `BUNDLE_PATH=<본체>/vendor/bundle`로 한다 (시스템 ruby 2.6은 실패).
+- **push 확인** (0.13.0): 프로필의 `- **push**: 배포 아님` 줄이 있는 레포에서는 guard가 일반 `git push`를 묻지 않고, 커밋 승인이 push 승인을 겸한다. 강제·삭제 push(`-f`, `--force*`, `--delete`, `+ref`, `:ref`, `--mirror`, `--prune`), 그 줄이 없는 레포(배포가 되는 레포, tech-blog처럼 프로필이 없는 레포), 해석 못 한 명령(`sh -c` 안 등)은 계속 묻는다. 대상 레포는 `cd`·`git -C`를 따라가고 없으면 훅 입력의 `cwd` → 사용자가 커밋을 승인했는데 push에서 한 번 더 확인 창이 떠서 바꿨다 (사용자 결정, 2026-10-29). 키워드로 배포 여부를 추측하지 않고 프로필에 명시한 줄만 믿는다 (없으면 묻는 쪽이 안전).
 - **스킬 토큰 비용**: SKILL.md의 `description`은 매 요청 컨텍스트에 들어가므로 짧게. 사용자가 직접 부르는 스킬(init, plan, release, weekly)은 `disable-model-invocation: true`.
 - **스킬에서 스크립트 경로**: 스킬 로드 시 "Base directory for this skill"이 주어지므로 `<base directory>/../../scripts/xxx.py`로 참조한다.
 - **사용자 보고 언어**: 한국어. 비대화(`claude -p`) 실행에서 영어로 보고한 적이 있어 일부 스킬에 명시했다.

@@ -8,7 +8,6 @@ import kitlib
 DANGEROUS_RM_TARGETS = {"/", "/*", "~", "~/", "~/*", "$HOME", "$HOME/", "*", ".", "./", "./*", "..", "../"}
 
 RULES = [
-    (r"\bgit\s+push\b", "git push: 원격 저장소에 반영됩니다 (Amplify 등은 곧 배포)"),
     (r"\bgit\s+reset\s+--hard\b", "git reset --hard: 커밋 안 된 변경이 사라집니다"),
     (r"\bgit\s+clean\s+-[a-zA-Z]*f", "git clean -f: 추적 안 되는 파일이 삭제됩니다"),
     (r"\bgit\s+branch\s+-D\b", "git branch -D: 머지 안 된 브랜치도 삭제됩니다"),
@@ -82,6 +81,51 @@ def deploy_reasons(command):
     return reasons
 
 
+PUSH = re.compile(r"\bgit(?:\s+-[Cc]\s+\S+|\s+-\S+)*\s+push\b")
+# 프로젝트 프로필(CLAUDE.md)에 이 줄이 있으면 push가 배포가 아니다 → 사용자가 커밋을 승인하면 묻지 않고 push
+PUSH_FREE = re.compile(r"^- \*\*push\*\*: 배포 아님", re.M)
+RISKY_PUSH_OPTS = {"--force", "--force-with-lease", "--force-if-includes", "--delete", "--mirror", "--prune"}
+
+
+def push_free_repo(path):
+    root = kitlib.git(path, "rev-parse", "--show-toplevel")
+    claude_md = os.path.join(root, "CLAUDE.md") if root else None
+    return bool(claude_md and os.path.exists(claude_md) and PUSH_FREE.search(kitlib.read(claude_md)))
+
+
+def push_reasons(command, cwd):
+    """git push마다: 프로필에 'push: 배포 아님'인 레포의 일반 push면 통과, 강제·삭제 push나 판단 못 하면 확인."""
+    expected = len(PUSH.findall(command))
+    if not expected:
+        return []
+    here, safe = cwd, 0
+    for segment in re.split(r"\n|&&|\|\||;|\|", command):
+        words = command_words(segment)
+        if words[:1] == ["cd"] and len(words) > 1:
+            here = os.path.join(here, os.path.expanduser(words[1]))
+            continue
+        if words[:1] != ["git"]:
+            continue
+        rest, repo = words[1:], here
+        while rest and rest[0].startswith("-"):
+            if rest[0] == "-C" and len(rest) > 1:
+                repo = os.path.join(repo, os.path.expanduser(rest[1]))
+                rest = rest[2:]
+            else:
+                rest = rest[2:] if rest[0] == "-c" else rest[1:]
+        if rest[:1] != ["push"]:
+            continue
+        args = rest[1:]
+        risky = any(a in RISKY_PUSH_OPTS or a.startswith("--force") or re.match(r"-[a-zA-Z]*[fd]", a)
+                    or a.startswith("+") or a.startswith(":") for a in args)
+        if risky or not push_free_repo(repo):
+            return ["git push: 원격 저장소에 반영됩니다 (배포가 될 수 있음. 프로필에 'push: 배포 아님'이면 일반 push는 묻지 않는다)"]
+        safe += 1
+    if safe < expected:
+        return ["git push: 원격 저장소에 반영됩니다 (명령을 해석하지 못해 확인)"]
+    return []
+
+
 def dangerous_rm(command):
     """rm에 -r과 -f가 (붙여 쓰든 나눠 쓰든) 있고 대상이 루트/홈/현재 폴더 전체인가."""
     for segment in re.split(r"&&|\|\||;|\|", command):
@@ -105,8 +149,10 @@ def dangerous_rm(command):
     return False
 
 
-command = (kitlib.read_input().get("tool_input") or {}).get("command", "")
+data = kitlib.read_input()
+command = (data.get("tool_input") or {}).get("command", "")
 reasons = [reason for pattern, reason in RULES if re.search(pattern, command)]
+reasons += push_reasons(command, data.get("cwd") or os.getcwd())
 if dangerous_rm(command):
     reasons.append("rm -rf 대상이 루트/홈/현재 폴더 전체입니다")
 reasons += deploy_reasons(command)

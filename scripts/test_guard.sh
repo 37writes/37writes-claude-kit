@@ -39,5 +39,32 @@ check ask 'env -u X FOO=1 ./deploy.sh'
 check ask 'time ./deploy.sh'
 check ask 'nohup ./deploy.sh &'
 check pass 'bash -c "./deploy.sh --diff"'
-check ask 'git push'
+# push: 프로필에 "push: 배포 아님"이 있는 레포만 일반 push 통과
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+git init -q "$T/free" && printf -- '- **push**: 배포 아님 (승인한 커밋은 바로 push)\n' > "$T/free/CLAUDE.md"
+git init -q "$T/deploy" && printf -- '- **push**: 배포 (main push 시 자동 배포)\n' > "$T/deploy/CLAUDE.md"
+checkin() {  # checkin <폴더> ask|pass <명령>
+  out=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$1" "$3" | python3 "$OLDPWD_GUARD/guard.py")
+  case "$out" in *'"ask"'*) got=ask ;; *) got=pass ;; esac
+  if [ "$got" = "$2" ]; then echo "ok   $2  $3  ($(basename "$1"))"; else echo "FAIL want=$2 got=$got  $3  ($(basename "$1"))"; fail=1; fi
+}
+OLDPWD_GUARD=$(pwd)
+checkin "$T/free" pass 'git push'
+checkin "$T/free" pass 'git push origin main'
+checkin "$T/free" pass 'git push -u origin feature'
+checkin "$T/free" ask 'git push --force'
+checkin "$T/free" ask 'git push -f origin main'
+checkin "$T/free" ask 'git push --force-with-lease'
+checkin "$T/free" ask 'git push origin +main'
+checkin "$T/free" ask 'git push origin :old'
+checkin "$T/free" ask 'git push --delete origin old'
+checkin "$T/free" ask 'bash -c "git push"'
+checkin "$T/free" ask "git -C $T/deploy push"
+checkin "$T/free" ask "cd $T/deploy && git push"
+checkin "$T/deploy" ask 'git push'
+checkin "$T/deploy" pass "git -C $T/free push origin main"
+checkin "$T/deploy" pass "cd $T/free && git add a && git commit -m x && git push"
+checkin /tmp ask 'git push'
+checkin /tmp pass 'git commit -m "push 규칙 수정"'
+checkin /tmp ask 'git -c core.x=1 push'
 exit $fail

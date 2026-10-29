@@ -52,7 +52,7 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 |---|---|---|
 | 이어하기 | 세션 시작 | 최근 devlog의 "다음 할 일"을 Claude에게 전달, commit-msg 훅이 없으면 설치, 레포를 kit 등록부에 등록. kit 레포에서는 열린 feedback 이슈 표시 |
 | Orca 작업 절차 | 세션 시작 (Orca IDE 안에서만) | 지휘 세션은 /kit:harness로 등급 분류부터, 워커는 지시 범위만 하고 `worker_done`으로 보고하도록 Claude에게 전달 |
-| 위험 명령 확인 | 명령 실행 직전 | git push, reset --hard, rm -rf ~, DROP TABLE, AWS 삭제, cdk deploy, terraform apply, IAM 권한 변경 등은 사용자 확인 |
+| 위험 명령 확인 | 명령 실행 직전 | git push(프로필이 `push: 배포 아님`이면 강제·삭제 push만), reset --hard, rm -rf ~, DROP TABLE, AWS 삭제, cdk deploy, terraform apply, IAM 권한 변경 등은 사용자 확인 |
 | devlog 알림 | 답변 끝 | 기록 안 된 커밋이 새로 생기면 한 번 알림 |
 | commit-msg (git 훅) | 모든 커밋 | 커밋 메시지 형식 검사. VS Code에서 직접 커밋해도 적용 |
 
@@ -77,4 +77,5 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 - [x] Orca IDE에서 시작한 세션에 harness 절차 자동 안내 (모든 레포)
 - [x] design (AI 티 안 나는 화면, tech-blog 종이 노트로 시범)
 - [x] blog를 글마다 worktree로 (말로 시작, 승인 뒤 main 병합), guard에 ampx·deploy.sh 확인
+- [x] push가 배포가 아닌 레포는 커밋 승인만으로 push (guard가 프로필의 push 줄을 읽음)
 - [x] blog 코디네이터 (tech-blog 본체 탭이 글 워커를 띄우고 검수·병합·정리)
