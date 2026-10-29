@@ -41,7 +41,7 @@ Orca IDE에서 시작한 세션에는 SessionStart 훅이 이 절차를 따르�
 의존이 없는 단계는 병렬로 맡긴다. **Validator는 Coder와 다른 워커**로 한다 (가능하면 다른 에이전트나 모델).
 
 **워커 고르기** (위에서부터 가능한 것)
-1. **Orca** (`command -v orca`가 있을 때): Orca의 orchestration 스킬을 불러 그 규칙을 그대로 따른다 (`orca skills get orchestration`이 설치된 버전에 맞는 안내서를 준다). 대기 시간, 재시도, 워커 정리는 그 안내서대로 하고 여기서 따로 정하지 않는다. Orca 감독은 사용자가 요청해야 시작하므로, 계획을 보여 줄 때 "Orca 워커로 진행"을 함께 확인받는다.
+1. **Orca** (`command -v orca`가 있을 때): Orca의 orchestration 스킬을 불러 그 규칙을 그대로 따른다 (`orca skills get orchestration`이 설치된 버전에 맞는 안내서를 준다). 대기 시간, 재시도, 워커 정리는 그 안내서대로 하고 여기서 따로 정하지 않는다. 사용자가 Orca 워커 사용을 미리 허락했으므로 따로 확인받지 않고 띄운다. 대신 아래 "Orca 배치와 보드"대로 탭과 worktree를 판단하고 계획에 적는다.
 2. **서브에이전트** (Agent 도구): Coder는 `isolation: "worktree"`, Validator는 새 서브에이전트로 띄운다 (새 컨텍스트라 Coder의 판단에 끌려가지 않는다).
 3. **단일 세션**: 직접 구현하고, 검증은 /kit:check 절차로 한다. 같은 컨텍스트라 독립성이 약하다는 점을 보고에 적는다.
 
