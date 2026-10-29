@@ -168,9 +168,17 @@ description: "검색 결과에 보일 요약 120~160자"
 1. 빌드(C절의 `BUNDLE_PATH`·ruby PATH 형태 그대로: jekyll build와 htmlproofer) 후 `_site`에서 `sh <scripts>/py.sh -m http.server 4100 --bind 127.0.0.1`로 띄워 그림이 있는 글을 캡처한다:
    `sh <scripts>/py.sh <scripts>/shot.py <url> /tmp/fig-light.png --theme light` (`--theme dark`, `--mobile`도). 긴 페이지는 `--height`를 늘리고 `sips -c <높이> <폭> --cropOffset <y> <x>`로 잘라서 Read로 본다. 글자 겹침·넘침, 선 연결을 확인한다.
 2. 새 색 조합을 썼으면 `sh <scripts>/py.sh <scripts>/contrast.py`로 잰다 (상자 바탕 `--paper-deep` 기준도).
-3. **다른 모델이 검수**한다. 내 결론은 주지 않고 글·SVG 경로·캡처만 준다. Codex가 있으면:
-   `codex exec -s read-only --color never -i /tmp/fig-light.png -o /tmp/fig-review.md - < /tmp/fig-prompt.md` (블로그 폴더에서)
-   prompt에 물을 것: 본문과 어긋나거나 본문에 없는 주장, 그림·캡션만 보고 핵심을 말할 수 있는가, 위치, title/desc·색·글자 크기, 선 방향. Codex가 없으면 새 서브에이전트에게 같은 내용으로 맡긴다.
+3. **다른 모델이 검수**한다. 내 결론은 주지 않고 글·SVG 경로·캡처 경로만 준다. 물을 것: 본문과 어긋나거나 본문에 없는 주장, 그림·캡션만 보고 핵심을 말할 수 있는가, 위치, title/desc·색·글자 크기, 선 방향, 본문의 기술 설명 중 틀리거나 과장된 문장.
+   사용자가 진행을 볼 수 있게 **Orca 탭에서 돌린다** (사용자 결정, 2026-10-29). Orca가 있으면 orchestration 안내서(`orca skills get orchestration`)대로 이 worktree에 Codex 워커를 띄운다:
+   ```sh
+   orca orchestration run-create --objective "블로그 검수: <slug>" --json
+   orca orchestration worker-start --worktree current --agent codex --task-title "글·그림 검수" --spec "<작업 지시>" --json
+   orca orchestration check --wait --types "worker_done,escalation,question" --timeout-ms 900000 --json
+   ```
+   - 작업 지시(harness 5항목): 대상 = 글·SVG·캡처 PNG 경로, 변경 = 위 질문의 답을 worktree의 `.blog-review.md`에 쓰기, 제약 = 다른 파일 수정·커밋·push 금지, 담당 범위 = `.blog-review.md` 하나, 완료 증거 = 그 파일과 `worker_done --report-path .blog-review.md`. 캡처를 열 수 없으면 SVG 코드로 판단하고 그렇다고 적게 한다.
+   - `.blog-review.md`는 브리프처럼 `info/exclude`에 넣어 커밋되지 않게 한다.
+   - `worker_done`을 받으면 파일을 읽고, 탭은 `worker-retain`으로 남겨 5단계 보고에 알린다 (사용자가 탭에서 검수 과정을 본다). 8단계 정리에서 worktree와 함께 닫힌다.
+   - Orca가 없으면 `codex exec -s read-only --color never -i /tmp/fig-light.png -o /tmp/fig-review.md - < /tmp/fig-prompt.md` (블로그 폴더에서), Codex도 없으면 새 서브에이전트에게 같은 내용으로 맡긴다.
 4. 검수 결과를 반영하고 다시 캡처한다. 반영하지 않은 지적은 이유와 함께 5단계에서 보고한다.
 
 ## 4. 공개 전 필터링 (반드시)
