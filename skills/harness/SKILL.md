@@ -9,7 +9,7 @@ AWS Deep Insight의 역할 구조(Coordinator → Planner → 사람 승인 → 
 대화 세션이 Coordinator·Planner·Supervisor·Tracker를 맡고, **사용자가 Plan Reviewer**, 워커(Orca 워커 또는 서브에이전트)가 Coder·Validator를 맡는다.
 워커 실행·메시지·정리는 Orca 같은 실행 도구가 맡고, 이 스킬은 등급, 계획, 검증 기준, 기록을 맡는다.
 
-Orca IDE에서 시작한 세션에는 SessionStart 훅이 첫 요청 전에 이 스킬을 불러 읽으라는 안내를 넣는다 (`scripts/orca_context.py`, 모든 레포. kit 프로필이 없으면 /kit:init 제안도).
+Orca IDE에서 시작한 세션에는 SessionStart 훅이 안내를 넣는다 (`scripts/orca_context.py`, 모든 레포): 지휘 세션은 첫 요청 전에 이 스킬을 불러 읽고, kit 프로필이 없으면 /kit:init을 제안한다. Task·Dispatch ID가 있는 작업 지시를 받은 워커는 이 절차를 다시 시작하지 않고 지시 범위만 한다.
 
 사용자에게 하는 질문과 보고는 모두 **한국어**로 한다.
 
@@ -24,7 +24,7 @@ Orca IDE에서 시작한 세션에는 SessionStart 훅이 첫 요청 전에 이 
 - 애매하면 높은 등급으로 한다. 분류 결과를 한 줄로 알린다: `등급: T1 (버그 수정, 코드 3개 파일)`
 - **등급은 영향 범위로, 워커를 띄울지는 변경 규모로** 정한다. 권한 두 줄 추가도 배포가 따르면 T2다. 다만 수정이 작으면 세션이 직접 고쳐도 되고, 그때도 승인·미리보기·검증은 빼지 않는다.
 - 원인을 찾는 읽기 전용 진단(로그·코드·설정 읽기)은 등급과 상관없이 먼저 해도 된다.
-- **다른 모델의 의견·검토**(GPT·Codex, agy 등)는 등급과 상관없이 3단계의 워커로 띄운다. Orca가 있으면 `worker-start --agent codex|antigravity` 탭으로 띄우고, 의견은 작업 지시의 완료 증거에 정한 보고서 파일로 받는다. `codex exec`, `agy -p`처럼 화면에 안 보이는 호출은 Orca가 없을 때만 쓴다 (사용자가 과정을 보고 싶어 한다).
+- 지휘 세션에서 **다른 모델의 의견·검토**(GPT·Codex, agy 등)를 구할 때는 등급과 상관없이 3단계의 워커로 띄운다. Orca가 있으면 `worker-start --agent codex|antigravity` 탭으로 띄우고, 의견은 작업 지시의 완료 증거에 정한 보고서 파일로 받는다. `codex exec`, `agy -p`처럼 화면에 안 보이는 호출은 Orca가 없을 때만 쓴다 (사용자가 과정을 보고 싶어 한다).
 
 ## 2. 계획 (Planner, T1 이상)
 
