@@ -90,6 +90,7 @@ types/index.d.ts                 패널의 $.state 계약 (plugin.json "types")
 - 기능 추가는 minor(0.x.0), 수정은 patch. `plugin.json`과 `marketplace.json`의 version을 **함께** 올린다.
 - README의 스킬 표와 로드맵을 갱신한다.
 - push 후 다른 컴퓨터: `/plugin marketplace update 37writes` → `/plugin update kit@37writes`
+- push 후 이 Mac: Orca worktree에서 push했으면 본체 `~/Documents/dev/37writes-claude-kit`에서 `git pull --ff-only` (alias가 본체를 로드하므로 안 하면 이전 버전이 뜬다)
 
 ## 남은 일
 
