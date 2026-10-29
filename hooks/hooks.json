@@ -1,5 +1,5 @@
 {
-  "description": "37writes kit: 세션 이어하기, 위험 명령 확인, devlog 알림",
+  "description": "37writes kit: 세션 이어하기, Orca 작업 절차 안내, 위험 명령 확인, devlog 알림",
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +8,11 @@
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/orca_context.py\"",
+            "timeout": 5
           }
         ]
       }

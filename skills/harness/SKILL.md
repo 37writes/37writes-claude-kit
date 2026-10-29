@@ -9,6 +9,8 @@ AWS Deep Insight의 역할 구조(Coordinator → Planner → 사람 승인 → 
 대화 세션이 Coordinator·Planner·Supervisor·Tracker를 맡고, **사용자가 Plan Reviewer**, 워커(Orca 워커 또는 서브에이전트)가 Coder·Validator를 맡는다.
 워커 실행·메시지·정리는 Orca 같은 실행 도구가 맡고, 이 스킬은 등급, 계획, 검증 기준, 기록을 맡는다.
 
+Orca IDE에서 시작한 세션에는 SessionStart 훅이 이 절차를 따르라는 안내를 넣는다 (`scripts/orca_context.py`, 모든 레포).
+
 사용자에게 하는 질문과 보고는 모두 **한국어**로 한다.
 
 ## 1. 분류 (Coordinator)
