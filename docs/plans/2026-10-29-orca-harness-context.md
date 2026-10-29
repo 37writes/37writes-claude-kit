@@ -1,7 +1,7 @@
 ---
 title: Orca에서 시작한 세션에 harness 절차 자동 안내
 date: 2026-10-29
-status: in-progress
+status: done
 tier: T1
 ---
 
@@ -29,8 +29,10 @@ Orca IDE에서 띄운 Claude 세션은 어느 레포에서든 시작할 때부�
 ## 작업 단계
 - [x] S1. `orca_context.py`, hooks.json, harness·README·CLAUDE.md, 버전 — Coder(세션) — `claude plugin validate .` 통과, Orca 환경 변수 있음/없음에서 훅 출력 확인, 변경은 scripts/, hooks/hooks.json, skills/harness, README.md, CLAUDE.md, .claude-plugin, docs/ 안에서만
   - 결과: validate 통과. `claude -p`(alias 우회, 이 세션의 자식 세션 변수 제거)로 kit_test·Orca 안 → 두 안내 모두, 일반 폴더·Orca 안 → Orca 안내만, Orca 밖 → 없음. 주의: 셸 alias가 남아 있으면 본체 kit(0.9.1)가 먼저 로드돼 수정본 훅이 안 돈다
-- [ ] S2. 독립 검증 — Validator(Orca Codex 워커, 같은 worktree 탭) — 훅을 직접 실행해 Orca 안/밖, kit 레포/일반 레포/git 아닌 폴더에서 출력 확인, 안내문이 harness 규칙과 어긋나지 않는지
-- [ ] S3. 검증 반영, 커밋, main 병합 — 세션
+- [x] S2. 독립 검증 — Validator(Orca Codex 워커, 같은 worktree 탭) — 훅을 직접 실행해 Orca 안/밖, kit 레포/일반 레포/git 아닌 폴더에서 출력 확인, 안내문이 harness 규칙과 어긋나지 않는지
+  - 결과 (Codex 워커, 같은 worktree 탭): validate·훅 입력 18조합·실제 세션 6개 통과. 안내문 지적 3건 반영 — F1 배치를 조건 없이 "새 작업은 새 worktree"로 요약(비git 폴더 예외 누락), F2 워커 판정을 "첫 지시"에 고정(활성 preamble 기준이어야 함), F3 T1이면 무조건 워커처럼 읽힘(워커 여부는 변경 규모). 탭은 `user_takeover`로 retained
+- [x] S3. 검증 반영, 커밋, main 병합 — 세션
+  - 결과: F1~F3 반영(문구 수정만이라 2차 검증 생략), Orca 안/밖 출력·validate 재확인
 
 ## 완료 기준
 - Orca 터미널에서 kit 프로젝트가 아닌 레포에 Claude를 새로 띄우면, 첫 응답 전 컨텍스트에 harness 안내가 들어 있다
