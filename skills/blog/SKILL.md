@@ -16,7 +16,7 @@ description: 대화나 TIL 메모를 기술 블로그 글로 쓴다. "블로그�
 
 ## 흐름
 
-글 하나 = tech-blog worktree 하나(브랜치 `post-<slug>`) = Orca 보드 카드 하나. 본체 main은 사용자가 승인한 글만 받는다.
+글 하나 = tech-blog worktree 하나(브랜치 `<branch>`: 보통 `post-<slug>`, Orca 설정에 따라 `<접두사>/post-<slug>`) = Orca 보드 카드 하나. 본체 main은 사용자가 승인한 글만 받는다.
 
 | 단계 | 어디서 | 내용 |
 |---|---|---|
@@ -57,7 +57,8 @@ description: 대화나 TIL 메모를 기술 블로그 글로 쓴다. "블로그�
 orca worktree create --repo path:<main> --name post-<slug> --no-parent --base-branch origin/main --setup skip --comment "<주제>" --json
 orca worktree set --worktree id:<id> --display-name "[블로그] <제목>" --workspace-status in-progress
 ```
-- `<id>`와 경로는 create의 JSON 출력에서 읽는다. 같은 이름이 이미 있으면 사용자에게 묻는다 (이어 쓰는 글일 수 있다).
+- `<id>`, 경로, **브랜치 이름**(`branch`, `refs/heads/` 뒤)은 create의 JSON 출력에서 읽는다. 같은 이름이 이미 있으면 사용자에게 묻는다 (이어 쓰는 글일 수 있다).
+- Orca는 브랜치에 접두사를 붙이기도 한다(예: `37writes/post-<slug>`). 브리프에 실제 `<branch>`를 적어 글 worktree가 6·8단계에서 그 이름을 쓰게 한다.
 - `--no-parent`: 출발 세션의 worktree와 부모-자식으로 묶지 않는다 (블로그 글은 독립 작업).
 - 브리프를 `<worktree>/.blog-brief.md`에 쓰고, **커밋 없이** 무시되게 한다. 블로그 `.gitignore`는 건드리지 않는다:
   ```sh
@@ -74,7 +75,7 @@ orca worktree set --worktree id:<id> --display-name "[블로그] <제목>" --wor
 
 ## C. 글 worktree: 쓰기부터 확인까지
 
-브랜치 `post-<slug>`의 이 worktree에서 한다. 먼저 `.blog-brief.md`를 읽고, 적힌 원료 파일·세션을 직접 열어 확인한다. 브리프가 부족하면 지어내지 말고 사용자에게 묻는다. 그다음 2~5단계를 진행한다.
+브랜치 `<branch>`의 이 worktree에서 한다. 먼저 `.blog-brief.md`를 읽고, 적힌 원료 파일·세션을 직접 열어 확인한다. 브리프가 부족하면 지어내지 말고 사용자에게 묻는다. 그다음 2~5단계를 진행한다.
 
 **Jekyll 빌드 (worktree에서)**: `vendor/bundle`과 `_site`는 추적되지 않아 본체에만 있다. 이 Mac에서 확인한 방법:
 ```sh
@@ -204,7 +205,7 @@ description: "검색 결과에 보일 요약 120~160자"
 
 1. 본체 `<main>`이 `main` 브랜치이고 깨끗한지 확인한다 (`git -C <main> status -sb`). 아니면 멈추고 사용자에게 알린다. 그다음 `git -C <main> pull --ff-only`.
 2. main이 앞서갔으면 글 worktree에서 `git fetch origin && git rebase origin/main`. 충돌이 나면 멈추고 보고한다. 병합 대상이 바뀌었으니 빌드를 다시 돌려 확인한다.
-3. 본체에서 `git -C <main> merge --ff-only post-<slug>` (브랜치는 같은 저장소를 공유하므로 바로 보인다)
+3. 본체에서 `git -C <main> merge --ff-only <branch>` (브랜치는 같은 저장소를 공유하므로 바로 보인다)
 4. `git -C <main> push origin main` (위험 명령 확인 훅이 한 번 더 묻는다)
 5. 배포 확인: **push한 커밋**의 실행을 본다 (`-L 1`은 이전 성공을 잡을 수 있다):
    ```sh
@@ -229,6 +230,6 @@ my-notes에서 커밋 (`docs(til): <제목> 발행 표시`)하고, 원격이 있
 배포 성공과 7단계(메모 정리)까지 **모두 끝낸 뒤**에 한다. `orca worktree rm`은 이 에이전트 세션도 끝내므로 rm이 마지막 명령이다. 그 전에 사용자에게 글 주소와 정리 사실, 브랜치가 남을 때의 안내를 보고한다.
 ```sh
 orca worktree set --worktree id:<id> --workspace-status completed
-orca worktree rm --worktree id:<id> --force --json     # worktree와 post-<slug> 브랜치 삭제
+orca worktree rm --worktree id:<id> --force --json     # worktree와 <branch> 브랜치 삭제
 ```
-브랜치가 남으면(Orca가 병합을 증명하지 못한 경우) 사용자가 본체에서 `git -C <main> branch -d post-<slug>`로 지운다 (이미 병합돼 `-D`는 필요 없다). Orca가 없었으면 `git -C <main> worktree remove <경로>`.
+브랜치가 남으면(Orca가 병합을 증명하지 못한 경우) 사용자가 본체에서 `git -C <main> branch -d <branch>`로 지운다 (이미 병합돼 `-D`는 필요 없다). Orca가 없었으면 `git -C <main> worktree remove <경로>`.
