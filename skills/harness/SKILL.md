@@ -43,6 +43,20 @@ AWS Deep Insight의 역할 구조(Coordinator → Planner → 사람 승인 → 
 2. **서브에이전트** (Agent 도구): Coder는 `isolation: "worktree"`, Validator는 새 서브에이전트로 띄운다 (새 컨텍스트라 Coder의 판단에 끌려가지 않는다).
 3. **단일 세션**: 직접 구현하고, 검증은 /kit:check 절차로 한다. 같은 컨텍스트라 독립성이 약하다는 점을 보고에 적는다.
 
+**Orca 배치와 보드** (실행 방법은 Orca 안내서, 여기서는 어디에 두고 카드를 어떻게 보일지만 정한다)
+- **작업 하나 = worktree 하나 = 보드 카드 하나.** 기획서(또는 버그) 하나를 한 worktree에서 끝낸다. 세션이 레포 본체(main)에 있거나 지금 worktree에 끝나지 않은 다른 작업이 있으면 새 worktree를 제안한다 (`orca worktree create --repo id:<repoId> --name <기획서 slug> --no-parent --json`). 거절하면 지금 worktree에서 하고 카드에 작업이 섞인다고 알린다.
+- 대상 worktree 지정: 지휘 세션이 그 worktree 안에 있으면 `current`, 아니면 create가 돌려준 `id:<repoId>::<path>`를 워커 배치와 카드 갱신에 똑같이 쓴다.
+- **역할 하나 = 탭 하나.** Coder·Validator는 그 worktree에 `worker-start`로 차례로 띄운다 (Validator는 Coder의 커밋을 같은 폴더에서 검사한다). `dispatch`로 붙인 탭은 끝나도 `worker-release`로 닫히지 않는다.
+- **같은 시간에 파일을 고치는 워커가 둘 이상**일 때만 각자 하위 worktree(`--worktree new-child`)에 두고 담당 범위를 겹치지 않게 나눈다. 끝나면 작업 worktree로 병합한다. 따로 병합·배포할 수 있는 단위면 처음부터 별도 작업(기획서)으로 나눈다. git이 없는 폴더 워크스페이스는 하위 worktree 없이 같은 폴더에서 차례로 한다.
+- **카드 갱신**: 단계가 바뀔 때 `orca worktree set --worktree <대상> --workspace-status <상태> --comment "<지금 하는 일 한 줄>"`. 사용자 확인을 기다릴 때는 `--unread`도 붙인다.
+
+  | 시점 | 상태 | comment 예 |
+  |---|---|---|
+  | 기획서 작성, 승인 대기 | `todo` | 계획 작성, 승인 대기 |
+  | Coder 시작 | `in-progress` | Coder S1 구현 중 |
+  | Validator 시작, T2 미리보기 승인·PR 대기 | `in-review` | Validator 재검증 2회차 |
+  | 병합 완료 (push 승인 시 push 후) | `completed` | 병합 a1b2c3d |
+
 **작업 지시** (Orca Task spec과 같은 5항목. 워커에게는 대화 전체가 아니라 이것만 준다)
 ```text
 대상: <계획 단계 id, 다룰 파일·컴포넌트·환경>
@@ -86,5 +100,5 @@ Coder의 보고를 믿지 않고 **처음부터 다시** 확인한다.
 
 - 검증을 통과한 워커 브랜치를 병합한다. 커밋은 /kit:commit 규칙, 본문에 `Refs: docs/plans/<파일>`.
 - 계획 체크박스를 `[x]`로 바꾸고 단계별 결과를 한 줄씩 덧붙인다. 모두 끝나면 `status: done`.
-- 정리: Orca 워커는 Orca 안내서의 완료 정산을 따른다 (`worker_done`이 Task 상태를 정리하므로 `task-update`로 다시 바꾸지 않는다). Orca 밖에서 만든 worktree는 병합 후 `git worktree remove`, 브랜치는 `git branch -d`. 남은 worktree가 있으면 목록으로 보고한다.
+- 정리: Orca 워커는 Orca 안내서의 완료 정산을 따른다 (`worker_done`이 Task 상태를 정리하므로 `task-update`로 다시 바꾸지 않는다). 병합이 끝난 하위 worktree와 `completed`가 된 작업 worktree는 사용자 확인 후 `orca worktree rm --worktree <selector>`로 지운다 (release·abandon은 worktree를 지우지 않는다. 지휘 세션이 그 안에 있으면 마지막 보고에서 Orca에서 지워 달라고 안내한다). Orca 밖에서 만든 worktree는 병합 후 `git worktree remove`, 브랜치는 `git branch -d`. 남은 worktree가 있으면 목록으로 보고한다.
 - 작업 단위가 끝나면 /kit:devlog로 기록한다. 남은 확인은 "다음 할 일"에 적는다 (다음 세션이 이어받는다).
