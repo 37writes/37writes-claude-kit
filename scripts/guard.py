@@ -22,18 +22,44 @@ RULES = [
 ]
 
 
+SHELLS = ("bash", "sh", "zsh")
+# 옵션 인자를 따로 받는 래퍼 옵션 (이 옵션 뒤의 값도 건너뛴다)
+WRAPPER_OPT_ARGS = {"sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U"}, "env": {"-u", "-C", "-S"},
+                    "npx": {"-p", "--package", "-c"}, "bunx": {"-p", "--package"}, "yarn": set(), "time": {"-f", "-o"}}
+
+
 def command_words(segment):
-    """세그먼트에서 실행되는 명령과 인자. 환경 변수 대입, sudo/env, bash/sh(+옵션), 경로 접두를 벗긴다."""
+    """세그먼트에서 실제 실행되는 명령과 인자. 래퍼(sudo, env, npx 등)와 그 옵션, 환경 변수 대입, 경로 접두를 벗긴다.
+    best-effort 안전망이지 샌드박스가 아니다."""
     try:
         tokens = shlex.split(segment, posix=True)
     except ValueError:
         tokens = segment.split()
-    while tokens and (re.match(r"[A-Za-z_]\w*=", tokens[0]) or tokens[0] in ("sudo", "env", "command", "exec")):
-        tokens = tokens[1:]
-    if tokens and os.path.basename(tokens[0]) in ("bash", "sh", "zsh"):
-        tokens = tokens[1:]
-        while tokens and tokens[0].startswith("-"):
+    for _ in range(20):
+        while tokens and re.match(r"[A-Za-z_]\w*=", tokens[0]):
             tokens = tokens[1:]
+        if not tokens:
+            break
+        name = os.path.basename(tokens[0])
+        rest = tokens[1:]
+        if name in SHELLS:
+            if any(re.match(r"-[a-z]*c[a-z]*$", t) for t in rest):
+                tokens = []  # sh -c "문자열"은 deploy_reasons가 문자열을 따로 분석한다
+                break
+            while rest and rest[0].startswith("-"):
+                rest = rest[1:]
+            tokens = rest
+        elif name in WRAPPER_OPT_ARGS or name in ("nohup", "command", "exec") or (name == "pnpm" and rest[:1] and rest[0] in ("dlx", "exec")):
+            if name == "pnpm":
+                rest = rest[1:]
+                name = "npx"
+            takes = WRAPPER_OPT_ARGS.get(name, set())
+            while rest and (rest[0].startswith("-") or (name == "env" and re.match(r"[A-Za-z_]\w*=", rest[0]))):
+                opt = rest[0]
+                rest = rest[2:] if opt in takes else rest[1:]
+            tokens = rest
+        else:
+            break
     if tokens:
         tokens[0] = os.path.basename(tokens[0])
     return tokens
@@ -42,15 +68,16 @@ def command_words(segment):
 def deploy_reasons(command):
     """deploy.sh(--diff·--synth는 미리보기라 통과)나 ampx sandbox/pipeline-deploy 실행인가."""
     reasons = []
+    # 따옴표 안에 &&·;가 있어도 sh -c "..."의 문자열을 통째로 다시 분석한다
+    for _, string in re.findall(r"\b(?:ba|z)?sh\s+(?:-\w+\s+)*-\w*c\s+([\"'])(.*?)\1", command, re.S):
+        reasons += deploy_reasons(string)
     for segment in re.split(r"\n|&&|\|\||;|\|", command):
         words = command_words(segment)
         if not words:
             continue
         if words[0] == "deploy.sh" and not {"--diff", "--synth"} & set(words[1:]):
             reasons.append("deploy.sh: 배포 스크립트 (--diff·--synth는 미리보기라 통과)")
-        elif words[0] == "npx" and len(words) > 1 and words[1] == "ampx":
-            words = words[1:]
-        if words[0] == "ampx" and any(w in ("sandbox", "pipeline-deploy") for w in words[1:2]):
+        if words[0] == "ampx" and words[1:2] and words[1] in ("sandbox", "pipeline-deploy"):
             reasons.append("ampx %s: Amplify Gen 2 AWS 리소스가 바뀝니다" % words[1])
     return reasons
 
