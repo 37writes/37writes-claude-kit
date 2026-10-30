@@ -22,7 +22,7 @@ tier: T2
 
 ## 범위
 - **포함**: 스킬(harness, plan, init, commit, release, check, design, blog, feedback), devlog·til·weekly 스킬 삭제, `scripts/`(kitlib, session_start, orca_context, install_githook, guard, 새 deploy_gate, 테스트), `collect_devlog.py`·`stop_reminder.py` 삭제, `hooks/hooks.json`, `hooks/panel.tsx`·`panel.test.tsx`, `types/index.d.ts`, README, CLAUDE.md(이 레포 프로필 포함), 두 manifest 0.15.0
-- **제외**: 과거 기록 삭제(`docs/devlog/`, my-notes, `~/.config/37writes-kit/repos.txt` 파일, 각 레포의 `.git/37writes-kit-reminded`는 그대로 둔다), 다른 프로젝트 실제 서비스 배포, tech-blog 설정 변경, guard의 기존 ask 규칙 완화(cdk deploy·terraform apply·IAM·amplify publish 등은 그대로 ask)
+- **제외**: 과거 기록 삭제(`docs/devlog/`, 각 레포의 `.git/37writes-kit-reminded`는 그대로 둔다. my-notes와 등록부 파일은 S2 중 사용자 결정으로 삭제, 아래 "결정 & 이유"), 다른 프로젝트 실제 서비스 배포, tech-blog 설정 변경, guard의 기존 ask 규칙 완화(cdk deploy·terraform apply·IAM·amplify publish 등은 그대로 ask)
 
 ## 설계
 
@@ -37,10 +37,10 @@ tier: T2
 - T1 이상: 기획서의 기존 섹션(결정 & 이유, 단계 체크박스 + 결과 한 줄)에 `## 남은 일` 하나만 더한다. 커밋 목록은 적지 않고 `git log --grep "Refs: docs/plans/<파일>"`로 찾는다. 기획서 갱신은 그 작업의 마지막 커밋에 같이 넣는다 (따로 `docs(devlog)` 같은 기록 커밋을 하지 않는다).
 - T0 수정: 커밋 메시지가 기록. 질문: 아무 파일도 만들지 않는다.
 - 학습("왜 그렇게 했나/무엇이 틀렸었나")은 결정 & 이유와 단계 결과에 적는다. 따로 개념 메모를 만들지 않는다.
-- **끝난 기획서는 지운다** (사용자 결정, 2026-10-30: "작업이 완료된 plan md 파일은 자동으로 삭제하게 하자. 나중에 보면 헷갈린다"). 모든 단계가 끝나 `done`이 되거나 그만둬 `abandoned`가 되면, 그 작업의 마지막 커밋에서 기획서와 보고서 폴더(`docs/plans/<파일 이름>/`)를 `git rm`으로 지운다. 커밋 본문에 `Refs: docs/plans/<파일>` + 결과 한 줄(+ 사용자만 할 수 있는 남은 확인이 있으면 그것). 따로 정리 커밋을 만들지 않는다. 내용은 git 기록에 남는다: `git log --all --format=%h -- docs/plans/<파일>`로 찾고 `git show <삭제 커밋>^:docs/plans/<파일>`로 읽는다.
+- **끝난 기획서는 지운다** (사용자 결정, 2026-10-30: "작업이 완료된 plan md 파일은 자동으로 삭제하게 하자. 나중에 보면 헷갈린다"). 모든 단계가 끝나면 마지막 작업 커밋에 `status: done`(또는 `abandoned` + 이유)·마지막 결과·`## 남은 일`을 넣고, 바로 이어서 삭제 커밋 하나(`docs(plan): <slug> 완료, 기획서 삭제`)로 기획서와 보고서 폴더(`docs/plans/<파일 이름>/`)를 `git rm`한다. 삭제 커밋 본문에 `Refs: docs/plans/<파일>` + 결과 한 줄(+ 사용자만 할 수 있는 남은 확인). 갱신과 삭제를 한 커밋에 넣으면 git에 삭제만 남아 `git show <삭제 커밋>^:`이 미완료 상태를 보인다 (S2 F3). 내용은 git 기록에 남는다: `git log --all --format=%h -- docs/plans/<파일>`로 찾고 `git show <삭제 커밋>^:docs/plans/<파일>`로 읽는다.
 - kit가 이어서 할 일이 남았으면 `done`이 아니다 (`in-progress` 그대로, `## 남은 일`에). `project.md`(프로젝트 설계)는 지우지 않고, 끝난 항목은 링크 대신 `완료 <커밋>`으로 바꾼다.
 - 이 레포의 이미 끝난 기획서(`status: done` 7개와 보고서 폴더)도 이번 작업에서 지운다. 이 기획서도 S3 마지막 커밋에서 지운다.
-- 삭제: devlog·til·weekly 스킬, `collect_devlog.py`, `stop_reminder.py`와 Stop 훅, 등록부 쓰기(`register`, `registered_repos`, init 안내). 등록부는 weekly만 읽었으므로 쓸 곳이 없다. 기존 파일은 지우지 않는다.
+- 삭제: devlog·til·weekly 스킬, `collect_devlog.py`, `stop_reminder.py`와 Stop 훅, 등록부 쓰기(`register`, `registered_repos`, init 안내). 등록부는 weekly만 읽었으므로 쓸 곳이 없다. 등록부 파일과 my-notes도 사용자 결정으로 지웠다 (S2 중).
 
 ### 3. 프로젝트 인식과 재개
 - `kitlib.kit_repo(cwd)`: git 루트의 CLAUDE.md에 프로필 표시(`<!-- 37writes-kit:profile:start -->`)가 있으면 kit 프로젝트. 호환: 표시가 없어도 `docs/devlog/`가 있으면 예전 kit 프로젝트로 본다 (이미 init한 레포의 commit-msg 훅 설치가 꺼지지 않게). `docs/plans/`만 있는 레포는 kit 프로젝트가 아니다.
@@ -67,8 +67,8 @@ tier: T2
 - `대상`(원격/브랜치), `검증`(셸 명령), `확인`(`{sha}`를 받아 그 SHA에 묶인 배포 실행 성공 + 핵심 기능 결과를 확인하는 명령, 성공이면 exit 0)은 필수, `제외`(glob 목록)는 선택. 하나라도 없거나 형식이 틀리면 정책 없음으로 본다.
 
 **`scripts/deploy_gate.py`** (표준 라이브러리만):
-- `verify [--repo DIR] [--sha REV]`: SHA(기본 HEAD)의 CLAUDE.md에서 정책을 읽고, 그 SHA 그대로의 깨끗한 checkout에서 `검증`을 실행한다 (HEAD가 그 SHA이고 `git status --porcelain`이 비었으면 제자리, 아니면 임시 `git worktree add --detach` 후 제거). 결과를 `<git-common-dir>/37writes-kit/deploy/<sha>.json`(sha, tree, 정책 원문, 명령, exit, 시각, 로그 경로)과 로그로 남긴다. exit는 검증 명령의 exit.
-- `confirm [--repo DIR] [--sha REV] [--timeout 초]`: `확인` 명령에 `{sha}`를 넣어 실행하고 결과를 같은 기록에 더한다. exit 0일 때만 배포 완료다.
+- `verify [--repo DIR] [--sha REV]`: SHA(기본 HEAD)의 CLAUDE.md에서 정책을 읽고, 항상 그 SHA의 임시 `git worktree add --detach` checkout에서 `검증`을 실행한 뒤 제거한다 (제자리 실행은 S2 D3에서 ignored 파일이 결과를 바꿔 없앴다). 명령 뒤 HEAD가 바뀌었거나 추적 파일이 바뀌었으면 실패로 기록한다 (S2 F1). 결과를 `<git-common-dir>/37writes-kit/deploy/<sha>.json`(sha, tree, 정책 원문, 명령, exit, 시각, 로그 경로)과 로그로 남긴다. exit는 검증 명령의 exit (추적 파일이 바뀌었으면 3).
+- `confirm [--repo DIR] [--sha REV] [--timeout 초]`: `확인` 명령에 `{sha}`를 넣어 그 SHA의 임시 checkout에서 실행하고 (현재 폴더의 커밋 안 된 스크립트가 결과를 바꾸지 못하게, S2 F2) 결과를 같은 기록에 더한다. exit 0일 때만 배포 완료다.
 - guard가 쓰는 함수 `push_allowed(repo, args)` → (허용 여부, 이유).
 
 **guard 판정** (`push: 배포 아님`이 아닌 레포의 push에 추가. 하나라도 어긋나면 지금처럼 ask):
@@ -102,12 +102,15 @@ tier: T2
 - 자동 배포는 guard가 정책·SHA·검증 기록·범위를 대조 → 교차 검토의 "대화만 안 묻고 guard 창은 남김"은 사용자가 최종 목표에서 뺐다. 검증 표시 파일 존재만 보지 않고 SHA·tree·정책·diff 범위를 guard가 다시 계산한다 (반례 4·5).
 - 정책은 base와 SHA에서 같아야 통과 → 에이전트가 같은 push에서 정책을 넓히는 것을 막는다.
 - 등록부는 쓰기를 멈추고 파일은 둔다 → 읽는 곳(weekly)이 없어졌고, 사용자 파일은 지우지 않는다.
-- 끝난 기획서는 지운다 (사용자 결정) → 남은 파일이 곧 진행 중인 작업이라 나중에 헷갈리지 않는다. 기록은 git 기록과 커밋 본문에 남는다. 재개 판정에서 "기본 브랜치에서 지워짐 = 끝남"을 쓸 수 있어 오래된 worktree 복사본 문제(반박 반례 2)도 같이 막는다.
+- 끝난 기획서는 지운다 (사용자 결정). 갱신 커밋과 삭제 커밋을 나눈다 → 한 커밋이면 git에 미완료 상태만 남는다 (S2 F3, 지휘 세션 결정).
+- my-notes(로컬, GitHub 비공개 저장소는 사용자가 직접 삭제)와 등록부 파일 삭제 (사용자 결정, 2026-10-30 S2 중 Validator 탭에서 "아니야 통째로 삭제해", 지휘 세션 질문에 "GitHub 포함") → 인계 문서의 "개인 자료는 삭제하지 않음"보다 최신 직접 지시가 우선. docs/devlog는 대상이 아니어서 그대로.
+- verify·confirm은 항상 임시 checkout → 제자리 실행은 빠르지만 ignored 파일·커밋 안 된 스크립트가 결과를 바꿨다 (S2 D2·D3).
+- (끝난 기획서 삭제 이유) → 남은 파일이 곧 진행 중인 작업이라 나중에 헷갈리지 않는다. 기록은 git 기록과 커밋 본문에 남는다. 재개 판정에서 "기본 브랜치에서 지워짐 = 끝남"을 쓸 수 있어 오래된 worktree 복사본 문제(반박 반례 2)도 같이 막는다.
 
 ## 엣지 케이스 & 리스크
 - 기존 kit 프로젝트(프로필 블록 + devlog)는 그대로 kit로 인식, devlog 알림만 사라진다. 프로필 없이 devlog만 있는 레포도 호환으로 인식.
 - 프로필의 예전 "작업 규칙" 줄이 남은 다른 프로젝트: 지침과 충돌하지 않게 harness가 "프로필 규칙 문장보다 harness 공통 규칙이 우선, 사실 줄(push·배포·자동 배포)은 프로필"이라고 적는다. 갱신은 그 레포에서 작업할 때 init 보완 절차로.
-- 검증 명령이 의존성 설치를 요구하면 임시 worktree에서 오래 걸린다 → 정책의 `검증`에 설치까지 쓰게 하고, 제자리 실행 조건(HEAD == SHA, 깨끗함)을 둔다.
+- 검증 명령이 의존성 설치를 요구하면 임시 worktree에서 오래 걸린다 → 정책의 `검증`에 설치까지 쓰게 한다. 느려도 매번 임시 checkout이다 (ignored 파일·로컬 캐시에 기대지 않게).
 - guard는 샌드박스가 아니다 (best-effort). 기록 위조를 완전히 막지 못한다는 점을 README에 적는다.
 - 원격 추적 ref가 오래됐으면 범위 계산이 넓어진다(더 엄격). 원격이 앞서 있으면 push 자체가 거부된다.
 - harness가 길어진다 → 170줄 상한.
@@ -128,9 +131,12 @@ tier: T2
 ## 작업 단계
 - [x] S0. 기획 반박 — Codex 워커(탭) — `plan-review.md`에 반례 ≤3 + 확인 방법, 이 기획서 "기획 반박"에 수용/기각
   - 결과: 반례 3개 수용, 출시 단위 축소 제안 1개 기각, 설계 2·3·5 갱신
-- [ ] S1a. 코드 — Claude Coder A(하위 worktree) — 담당: `scripts/`(kitlib, session_start, orca_context, install_githook, guard, deploy_gate·plans 신규, test_guard.sh, test_deploy_gate.sh·test_plans.sh 신규, collect_devlog·stop_reminder 삭제), `hooks/`, `types/`. 완료: `sh scripts/test_guard.sh`, `sh scripts/test_deploy_gate.sh`(로컬 bare 원격 fixture로 허용/정책 없음/범위 밖/검증 실패/잘못된 SHA/움직이는 브랜치 이름/push URL 다름/병합 후 새 SHA/배포 실패/정책 변경/기록 위조), `sh scripts/test_plans.sh`(다른 worktree 재개, done·abandoned·기본 브랜치에서 지워짐 제외, 오래된 복사본, 충돌, 프로필 없는 레포), `claude plugin test .`, 훅 직접 실행(새·옛 kit, 무관 레포) 통과
-- [ ] S1b. 문서 — Claude Coder B(하위 worktree) — 담당: `skills/`(devlog·til·weekly 삭제 포함), README.md, CLAUDE.md, `.claude-plugin/` 두 manifest(0.15.0), `docs/plans/`의 끝난 기획서 7개와 보고서 폴더 삭제(이 기획서·`2026-10-30-harness-flow/`는 제외). 완료: `claude plugin validate .`, `grep -rn "kit:devlog\|kit:til\|kit:weekly" skills README.md CLAUDE.md` 0건(과거 기록 설명 제외), harness 170줄 이하, T2·push·배포 정의가 harness 밖에 정의 형태로 없음
-- [ ] S1c. 병합 — 지휘 세션 — 두 하위 브랜치를 작업 브랜치로 병합, 통합 검사 재실행
+- [x] S1a. 코드 — Claude Coder A(하위 worktree) — 담당: `scripts/`(kitlib, session_start, orca_context, install_githook, guard, deploy_gate·plans 신규, test_guard.sh, test_deploy_gate.sh·test_plans.sh 신규, collect_devlog·stop_reminder 삭제), `hooks/`, `types/`. 완료: `sh scripts/test_guard.sh`, `sh scripts/test_deploy_gate.sh`(로컬 bare 원격 fixture로 허용/정책 없음/범위 밖/검증 실패/잘못된 SHA/움직이는 브랜치 이름/push URL 다름/병합 후 새 SHA/배포 실패/정책 변경/기록 위조), `sh scripts/test_plans.sh`(다른 worktree 재개, done·abandoned·기본 브랜치에서 지워짐 제외, 오래된 복사본, 충돌, 프로필 없는 레포), `claude plugin test .`, 훅 직접 실행(새·옛 kit, 무관 레포) 통과
+  - 결과: `20badd5` (Task `task_477f2386913f` / Dispatch `ctx_82193551f4ef`, [coder-a.md](2026-10-30-harness-flow/coder-a.md)). guard 58·deploy_gate 40·plans 32 ok, plugin test 6 pass
+- [x] S1b. 문서 — Claude Coder B(하위 worktree) — 담당: `skills/`(devlog·til·weekly 삭제 포함), README.md, CLAUDE.md, `.claude-plugin/` 두 manifest(0.15.0), `docs/plans/`의 끝난 기획서 7개와 보고서 폴더 삭제(이 기획서·`2026-10-30-harness-flow/`는 제외). 완료: `claude plugin validate .`, `grep -rn "kit:devlog\|kit:til\|kit:weekly" skills README.md CLAUDE.md` 0건(과거 기록 설명 제외), harness 170줄 이하, T2·push·배포 정의가 harness 밖에 정의 형태로 없음
+  - 결과: `ef3b58e` (Task `task_5087e3593fb0` / Dispatch `ctx_d657713ebda9`, [coder-b.md](2026-10-30-harness-flow/coder-b.md)). 스킬 9개, harness 144줄, 끝난 기획서 7개 삭제
+- [x] S1c. 병합 — 지휘 세션 — 두 하위 브랜치를 작업 브랜치로 병합, 통합 검사 재실행
+  - 결과: `20badd5`(A, fast-forward) + `ef3b58e`(B) → 병합 `ea26107`. validate 통과, guard 58·deploy_gate 40·plans 32 ok, plugin test 6 pass
 - [ ] S2. 독립 검증 — Codex Validator(탭) — 재실행 + 이 worktree를 `--plugin-dir`로 로드한 새 Claude 세션에서 시나리오 a~f를 실제 도구 호출·산출물로 확인 (아래 완료 기준), 스스로 고른 실패 시나리오, `validation.md`
 - [ ] S3. 반영과 통합 — 지휘 세션 — 지적 수정·재검증, 기획서 결과·남은 일, main fast-forward 병합, `git push origin main`, 본체가 그 SHA인지 확인
 
