@@ -104,3 +104,39 @@ guard 판정 (어긋나면 ask, 이유 문자열 = `git push: … — 자동 배
 - 기본 브랜치가 `origin/HEAD`면 원격 추적 ref 기준이라 fetch 전에는 "기본 브랜치에서 지워짐"을 늦게 안다 (그동안은 복사본이 활성으로 보일 수 있음. 같은 경로의 done 복사본이 있으면 그걸로 빠진다)
 - 패널은 `sh`로 plans.py를 실행한다. 윈도우에서 `sh`가 없으면 기획서 목록이 비어 보인다 (훅과 같은 전제, 윈도우 실기 테스트는 남은 일)
 - 패널 렌더링 테스트는 `$.state`가 없는 테스트 환경이라 기획서가 있는 상태의 그림은 `claude -p "/kit"` 텍스트 출력으로만 확인했다
+
+## 재작업 (S1a-r)
+
+- Task `task_ee871403cc04` / Dispatch `ctx_614218573aa1`, 기준 `1d47d0f`. S2 검증 1회차 F1·F2와 권고 D3 (validation.md D1~D3, E)
+- 실행 모델: Claude Opus 5.5 (`global.anthropic.claude-opus-5-5`, 세션 시스템 정보 기준)
+
+### 변경
+| 파일 | 변경 |
+|---|---|
+| `scripts/deploy_gate.py` | 새 `temp_checkout(repo, sha)`: `verify`·`confirm` 모두 **항상** 그 SHA의 임시 `git worktree add --detach`에서 실행하고, 끝나면(성공·실패·시간 초과·예외) `worktree remove --force` + 폴더 삭제 + `worktree prune`. 제자리 실행(inPlace) 경로 삭제 → 사용자 작업 폴더의 커밋 안 된 파일·ignored 파일이 결과에 영향을 주지 않고, 작업 폴더도 건드리지 않는다 (D2·D3). 새 `checkout_changes`: 검증 명령 뒤 임시 checkout의 HEAD == SHA이고 `status --porcelain --untracked-files=no`가 비었는지 확인, 아니면 실패 기록·exit 3 (F1). 새로 만든 추적 안 된 파일(빌드 결과)은 허용. 기록 형식 2: `{format: 2, sha, tree, policy, command, checkout: "temp-worktree", commandExit, headAfter, changed(앞 10개), changedCount, exit, time, log, confirm?{command, checkout, sha, exit, time, log}}` |
+| `scripts/deploy_gate.py` `push_allowed` 4번 | `format == 2`·`checkout == "temp-worktree"`가 아니면 ask ("예전 형식이거나 임시 checkout 검증이 아닌 기록") → 예전 inPlace 기록은 통과하지 않는다. `exit`·`commandExit` 둘 다 0, `headAfter == SHA`, `changed == []`, `changedCount == 0`일 때만 통과 |
+| `scripts/guard.py` | 변경 없음 (대조는 `push_allowed` 안에서 끝남) |
+| `scripts/test_deploy_gate.sh` | 40 → 56건. check.sh가 빌드 결과(`out/`, 추적 안 됨)를 만들고, `MUTATE`가 있으면 추적 파일을 고치고, `NEED_LOCAL`이 있으면 ignored `local-ok`를 요구. 추가: 기록의 실행 위치, 빌드 결과가 작업 폴더에 안 남음, **D2** 작업 폴더의 커밋 안 된 `confirm.sh`(`exit 0`)로도 confirm 실패 유지·작업 폴더 그대로, **D1** 추적 파일을 고친 검증 exit 3·기록 `changed == ["MUTATE"]`·guard ask·작업 폴더 파일 그대로·exit만 0으로 고친 기록도 ask, **D3** HEAD == SHA·깨끗한 작업 폴더 + ignored `local-ok`가 있어도 검증 실패·guard ask, 예전 형식 기록(format 제거 + inPlace) ask, app 임시 worktree 모두 정리, confirm 시간 초과 exit 124·정리. 기존 inPlace=false 케이스는 "작업 폴더 HEAD·파일 그대로"로 바꿈. 기존 40건의 의도는 그대로 |
+
+### 실행한 명령과 결과
+| 명령 | 결과 |
+|---|---|
+| `sh scripts/test_deploy_gate.sh` | exit 0, ok 56 / FAIL 0. 각 ask의 이유 문자열: D1 `검증 실패 기록 (exit≠0)`, exit만 고친 기록 `검증 중 checkout이 바뀐 기록 (HEAD·추적 파일)`, D3 `검증 실패 기록 (exit≠0)`, 예전 형식 `예전 형식이거나 임시 checkout 검증이 아닌 기록` |
+| `sh scripts/test_guard.sh` | exit 0, ok 58 / FAIL 0 |
+| `sh scripts/test_plans.sh` | exit 0, ok 32 / FAIL 0 |
+| `claude plugin validate .` | `✔ Validation passed with warnings` |
+| `python3 -m py_compile scripts/deploy_gate.py` | 통과 |
+
+### 문서 쪽(Coder B)에서 바꿀 문장
+- `README.md:77`: "그 SHA의 깨끗한 checkout에서 검증 명령 실행·기록" → "그 SHA의 임시 worktree에서 검증 명령 실행·기록 (추적 파일을 바꾸면 실패)", confirm도 "그 SHA의 임시 worktree에서 확인 명령 실행"
+- `skills/release/SKILL.md:16` 주석 "그 SHA의 깨끗한 checkout에서" → "그 SHA의 임시 worktree에서 (끝나면 지움, 추적 파일을 바꾸면 실패)", `:18` confirm 주석에 "그 SHA의 임시 worktree에서"
+- `CLAUDE.md:31` `verify`(그 SHA에서 …) → "그 SHA의 임시 worktree에서", `CLAUDE.md:50` "`deploy_gate.py verify` 기록(tree·정책·명령, exit 0)" → "기록(형식 2, 임시 checkout, tree·정책·명령, exit 0, 실행 뒤 HEAD·추적 파일 그대로)" + 결정 배경 한 줄: 제자리 실행은 ignored 파일·커밋 안 된 스크립트가 결과를 바꿔서 없앴다 (S2 검증 D2·D3, 2026-10-30)
+- 기획서 `docs/plans/2026-10-30-harness-flow.md:70`의 "(HEAD가 그 SHA이고 … 제자리, 아니면 임시 …)"와 `:110`의 "제자리 실행 조건(HEAD == SHA, 깨끗함)을 둔다" → 항상 임시 worktree. 검증 명령은 의존성 설치를 포함하고 추적 파일을 고치지 않아야 한다 (`lint --fix` 대신 검사만)
+- 정책 작성 안내(README 자동 배포 절 또는 release)에 한 줄: 검증·확인 명령은 그 SHA의 새 checkout에서 돌므로 `.env` 같은 ignored 파일·로컬 캐시에 기대지 않는다
+
+### 남은 위험
+- 매번 새 checkout이라 의존성 설치가 있는 검증은 느려진다 (설치 캐시는 명령이 알아서, 예: npm 전역 캐시). 대신 재현성이 생긴다
+- 추적 파일 변경 검사는 명령이 끝난 시점만 본다. 명령이 파일을 고쳤다가 되돌리면 잡지 못한다. 추적 안 된 새 파일(생성 코드 포함)은 허용하므로 그 파일이 결과에 영향을 줄 수 있다
+- confirm 시간 초과 때 `shell=True`의 셸만 끝나고 그 자식(예: `sleep`)은 남을 수 있다. 임시 worktree는 지워지므로 자식은 지워진 폴더에서 계속 돈다
+- 검증 명령이 `.git` 공통 폴더(다른 ref, 기록 폴더)를 고치는 것은 막지 않는다 (guard는 best-effort, 앞 절과 같음)
+- 임시 폴더는 시스템 임시 경로(`kit-deploy-*`). 프로세스가 강제 종료(SIGKILL)되면 남을 수 있고 다음 `worktree prune`이 정리한다

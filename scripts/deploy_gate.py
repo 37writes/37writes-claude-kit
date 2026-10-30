@@ -5,12 +5,15 @@
 
 사용: sh scripts/py.sh scripts/deploy_gate.py verify  [--repo DIR] [--sha REV]
       sh scripts/py.sh scripts/deploy_gate.py confirm [--repo DIR] [--sha REV] [--timeout 초]
-- verify: 그 SHA 그대로의 깨끗한 checkout에서 `검증`을 실행하고 <git-common-dir>/37writes-kit/deploy/<sha>.json에 남긴다. exit는 검증 명령의 exit
-- confirm: `확인`에 {sha}를 넣어 실행하고 같은 기록에 더한다. exit 0일 때만 배포 완료
+- verify: 그 SHA의 임시 detached worktree에서 `검증`을 실행하고 <git-common-dir>/37writes-kit/deploy/<sha>.json에 남긴다.
+  명령이 끝난 뒤 HEAD가 그 SHA가 아니거나 추적 파일이 바뀌었으면 실패(exit 3). 그 밖에는 exit = 검증 명령의 exit
+- confirm: `확인`에 {sha}를 넣어 같은 방식의 임시 worktree에서 실행하고 같은 기록에 더한다. exit 0일 때만 배포 완료
+- 임시 worktree는 끝나면(실패·시간 초과 포함) 지운다. 사용자 작업 폴더의 커밋 안 된 파일·ignored 파일은 결과에 영향을 주지 않는다
 - 그 사이에 push는 `git push <원격> <40자리 SHA>:refs/heads/<브랜치>` 하나로 한다 (guard가 push_allowed로 대조)
 guard는 샌드박스가 아니다. 기록 폴더 보호는 best-effort라 위조를 완전히 막지 못한다.
 """
 import argparse
+import contextlib
 import datetime
 import json
 import os
@@ -27,6 +30,10 @@ KEYS = ("대상", "검증", "제외", "확인")
 SHA40 = re.compile(r"[0-9a-f]{40}$")
 SECRETS = (re.compile(r"AKIA[0-9A-Z]{16}"), re.compile(r"BEGIN .*PRIVATE KEY"))
 LS_REMOTE_TIMEOUT = 5
+RECORD_FORMAT = 2       # 형식 없는 예전 기록(제자리 실행 inPlace가 있던 때)은 guard가 통과시키지 않는다
+CHECKOUT = "temp-worktree"
+CHANGED_EXIT = 3        # 검증 명령은 exit 0인데 checkout이 바뀜
+CHANGED_SHOWN = 10
 
 
 def run_git(repo, *args, timeout=None):
@@ -193,12 +200,16 @@ def push_allowed(repo, args, global_opts=()):
     if not record:
         return False, "이 SHA의 검증 기록이 없음 (deploy_gate.py verify)"
     _, tree = run_git(repo, "rev-parse", f"{src}^{{tree}}")
+    if record.get("format") != RECORD_FORMAT or record.get("checkout") != CHECKOUT:
+        return False, "예전 형식이거나 임시 checkout 검증이 아닌 기록 (deploy_gate.py verify 다시)"
     if record.get("sha") != src or record.get("tree") != tree.strip():
         return False, "검증 기록의 SHA·tree가 다름"
     if record.get("policy") != raw or record.get("command") != policy["verify"]:
         return False, "검증 기록의 정책·명령이 지금 정책과 다름"
-    if record.get("exit") != 0:
+    if record.get("exit") != 0 or record.get("commandExit") != 0:
         return False, "검증 실패 기록 (exit≠0)"
+    if record.get("headAfter") != src or record.get("changed") != [] or record.get("changedCount") != 0:
+        return False, "검증 중 checkout이 바뀐 기록 (HEAD·추적 파일)"
 
     # 5. 범위: 제외 경로와 시크릿
     _, names = run_git(repo, "diff", "--no-renames", "--name-only", base, src)
@@ -226,6 +237,35 @@ def tail(path, n=20):
     return "\n".join(lines[-n:])
 
 
+@contextlib.contextmanager
+def temp_checkout(repo, sha):
+    """그 SHA의 임시 detached worktree. 사용자 작업 폴더(커밋 안 된 파일·ignored 파일)는 쓰지도 건드리지도 않는다.
+    성공·실패·시간 초과·중단 모두 끝나면 지운다. 만들지 못하면 None."""
+    workdir = tempfile.mkdtemp(prefix="kit-deploy-")
+    try:
+        if run_git(repo, "worktree", "add", "--detach", workdir, sha)[0] != 0:
+            yield None
+        else:
+            yield workdir
+    finally:
+        run_git(repo, "worktree", "remove", "--force", workdir)
+        shutil.rmtree(workdir, ignore_errors=True)
+        run_git(repo, "worktree", "prune")
+
+
+def checkout_changes(workdir, sha):
+    """명령 실행 뒤 임시 checkout이 그 SHA 그대로인가 → (HEAD, 바뀐 항목 목록). 새로 만든 추적 안 된 파일(빌드 결과 등)은 보지 않는다."""
+    code, head = run_git(workdir, "rev-parse", "HEAD")
+    head = head.strip() if code == 0 else None
+    changed = [] if head == sha else [f"HEAD {head or '(읽지 못함)'}"]
+    code, status = run_git(workdir, "status", "--porcelain", "--untracked-files=no")
+    if code != 0:
+        changed.append("git status 실패")
+    else:
+        changed += [line[3:] for line in status.splitlines() if line.strip()]
+    return head, changed
+
+
 def verify(repo, sha):
     raw, policy = policy_at(repo, sha)
     if not policy:
@@ -234,29 +274,25 @@ def verify(repo, sha):
     folder = record_dir(repo)
     os.makedirs(folder, exist_ok=True)
     log_path = os.path.join(folder, f"{sha}.verify.log")
-    head = resolve_sha(repo, "HEAD")
-    _, dirty = run_git(repo, "status", "--porcelain")
-    in_place = head == sha and not dirty.strip()
-    workdir = repo
-    if not in_place:
-        workdir = tempfile.mkdtemp(prefix="kit-verify-")
-        if run_git(repo, "worktree", "add", "--detach", workdir, sha)[0] != 0:
-            shutil.rmtree(workdir, ignore_errors=True)
+    with temp_checkout(repo, sha) as workdir:
+        if not workdir:
             print(f"임시 worktree를 만들지 못했습니다: {sha}")
             return 2
-    try:
-        code = run_shell(policy["verify"], workdir, log_path)
-    finally:
-        if not in_place:
-            run_git(repo, "worktree", "remove", "--force", workdir)
-            shutil.rmtree(workdir, ignore_errors=True)
+        command_exit = run_shell(policy["verify"], workdir, log_path)
+        head, changed = checkout_changes(workdir, sha)
+    code = command_exit if command_exit != 0 else (CHANGED_EXIT if changed else 0)
     _, tree = run_git(repo, "rev-parse", f"{sha}^{{tree}}")
     path = save_record(repo, sha, {
-        "sha": sha, "tree": tree.strip(), "policy": raw, "command": policy["verify"], "exit": code,
-        "time": now(), "log": log_path, "inPlace": in_place,
+        "format": RECORD_FORMAT, "sha": sha, "tree": tree.strip(), "policy": raw, "command": policy["verify"],
+        "checkout": CHECKOUT, "commandExit": command_exit, "headAfter": head, "changed": changed[:CHANGED_SHOWN],
+        "changedCount": len(changed), "exit": code, "time": now(), "log": log_path,
     })
     if code == 0:
         print(f"검증 통과: {sha}\n기록: {path}")
+    elif command_exit == 0:
+        shown = ", ".join(changed[:CHANGED_SHOWN]) + (f" 외 {len(changed) - CHANGED_SHOWN}개" if len(changed) > CHANGED_SHOWN else "")
+        print(f"검증 실패: 검증 명령이 그 SHA의 checkout을 바꿨습니다 ({shown}): {sha}\n"
+              f"기록: {path}\n검증 명령은 추적 파일을 고치지 않아야 한다 (예: --fix 대신 검사만)")
     else:
         print(f"검증 실패 (exit {code}): {sha}\n기록: {path}\n--- 로그 끝부분 ---\n{tail(log_path)}")
     return code
@@ -271,9 +307,13 @@ def confirm(repo, sha, timeout):
     os.makedirs(folder, exist_ok=True)
     log_path = os.path.join(folder, f"{sha}.confirm.log")
     command = policy["confirm"].replace("{sha}", sha)
-    code = run_shell(command, repo, log_path, timeout)
+    with temp_checkout(repo, sha) as workdir:
+        if not workdir:
+            print(f"임시 worktree를 만들지 못했습니다: {sha}")
+            return 2
+        code = run_shell(command, workdir, log_path, timeout)
     record = load_record(repo, sha) or {"sha": sha, "policy": raw}
-    record["confirm"] = {"command": command, "exit": code, "time": now(), "log": log_path}
+    record["confirm"] = {"command": command, "checkout": CHECKOUT, "sha": sha, "exit": code, "time": now(), "log": log_path}
     path = save_record(repo, sha, record)
     if code == 0:
         print(f"배포 확인 완료: {sha}\n기록: {path}")
