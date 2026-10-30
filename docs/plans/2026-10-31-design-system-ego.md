@@ -42,7 +42,7 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 ## 작업 단계
 - [x] S1. 기획 반박 — Claude — 반례 3개와 blog 캡처 누락을 수용, 실제 모델과 확인 결과 기록
 - [x] S2. 스킬·자산 구현 — Codex 지휘 세션 — ego에서 44개 폭/테마/모드 조합, 터치 메뉴, 키보드 마지막 항목, 시스템 모드, 깨진 fixture 탐지 통과. 실제 토큰 대비 88조합 통과. 프로필 검사 5종 통과(기존 디렉터리 경고 유지).
-- [ ] S3. 독립 검증 — Claude — 스킬 적용 시나리오, CSS 테마와 ego 측정 도우미 재실행
+- [x] S3. 독립 검증 — Claude Opus 5.5 — 최종 Task task_b733f9e9a876 / Dispatch ctx_cb4e4257d12f: R1/R2/R3 해결, 진행 차단 없음. final-review.md 참고.
 - [ ] S4. 본체 반영과 프로젝트별 위임 — Codex 지휘 세션 — 검증된 kit 원본에서 TTC/블로그 전용 worktree 에이전트로 작업 지시 전달 증거
 
 ## 완료 기준
@@ -68,3 +68,7 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 - Claude Opus 5.5, Task task_a27a14f42cd3 / Dispatch ctx_3b7c91675f53가 F1/F2 해결을 독립 확인. R1 오탐은 scroll viewport를 기준으로 바깥 조상의 clipping을 비교하도록 수정. 정상 body/패널 hidden·clip 대조군과 스크롤 viewport 자체 잘림 반례를 추가했다.
 - R2는 비조작 콘텐츠 clipping 미검사 한계와 root/body 숨김 경고를 추가. R3는 blog state.md 항목과 finish 후 브리프 삭제 순서를 수정. R4 ego 업그레이드는 범위 밖이므로 수행하지 않음.
 - 수정 후 ego 44행 및 9개 플래그 통과, node 구문 검사 및 git diff --check 통과. 최종 R1 확인은 같은 Claude 검수 탭 재사용.
+
+## S3 최종 결과
+- Claude가 정상 숨김 조상 대조군 8개와 잘린 스크롤 viewport 반례 6개를 독립 확인했다. 남은 P3 중 회귀 fixture는 Claude가 확인한 440px로 교체하고 scrollWidth > clientWidth 단언을 추가. 문서에 비조작 콘텐츠·세로 잘림 한계와 조상별 후보 묶음을 추가했다.
+- 최종 ego runSmoke 44행/9개 플래그 통과. TaskSpace10 finish 완료. 두 Claude 검수 탭은 user_takeover/external_terminal로 보존; 지휘자 소유의 미정산 워커 없음.

@@ -122,7 +122,11 @@ export async function runSmoke(page, url) {
       }
     }
     // An oversized scroll viewport itself is still clipped by its outer panel.
-    await page.evaluate(() => { document.querySelector(".kit-scroll").style.minWidth = "600px"; });
+    await page.evaluate(() => { document.querySelector(".kit-scroll").style.minWidth = "440px"; });
+    assert.equal(await page.evaluate(() => {
+      const el = document.querySelector(".kit-scroll");
+      return el.scrollWidth > el.clientWidth + 1;
+    }), true, "clipped viewport fixture must remain horizontally scrollable");
     const clippedScroll = await measureUI(page, { expectedWidth: 390, expectedMobile: true });
     assert.ok(clippedScroll.issues.some(i => i.type === "clipped-by-ancestor" && i.classes.includes("kit-tab")));
     return { rows, colors, touchMenu: true, keyboardMenuAndLastLink: true, systemMode: true, brokenFixtureDetected: true,
