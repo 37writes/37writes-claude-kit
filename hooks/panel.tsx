@@ -2,15 +2,17 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { KitSkill, KitStatus } from '../types'
+import type { KitPlan, KitSkill, KitStatus } from '../types'
 
 const PANE = 'kit'
 const TITLE = '37writes kit'
 const skills = atom({ plugin: 'kit', key: 'skills' } as const, [])
-const status = atom({ plugin: 'kit', key: 'status' } as const, null)
+// 0.15에서 devlog 상태를 기획서 목록으로 바꿨다: 예전 모양의 값은 null로 읽는다
+const status = atom({ plugin: 'kit', key: 'status' } as const, null, { shape: 'plans-1' })
 
-const DEVLOG_FILE = /^\d{4}-\d{2}\.md$/
 const CATEGORY = /\*\*구분\*\*:\s*(\S+)/
+const PROFILE_MARK = '<!-- 37writes-kit:profile:start -->'
+const PLANS_SHOWN = 5
 
 // 설명의 첫 문장만: "…초기화한다. git init, …" → "…초기화한다"
 export function summarize(description: string): string {
@@ -19,7 +21,7 @@ export function summarize(description: string): string {
 }
 
 // 작업 흐름 순서. 여기 없는 새 스킬은 뒤에 이름순으로 붙는다
-const ORDER = ['init', 'plan', 'harness', 'commit', 'devlog', 'check', 'release', 'til', 'blog', 'weekly', 'feedback']
+const ORDER = ['harness', 'plan', 'commit', 'check', 'design', 'release', 'blog', 'feedback', 'init']
 
 async function kitSkills($: EngineInterface): Promise<KitSkill[]> {
   const prefix = `${$.plugin.name}:`
@@ -38,55 +40,68 @@ async function git($: EngineInterface, cwd: string, args: string[]): Promise<str
   return r && r.exitCode === 0 ? r.stdout.trim() : undefined
 }
 
+/** kitlib.kit_repo와 같은 기준: 프로필 표시가 있거나, (호환) docs/devlog가 있으면 kit 프로젝트 */
+export function isKitProject(claudeMd: string, hasDevlog: boolean): boolean {
+  return claudeMd.includes(PROFILE_MARK) || hasDevlog
+}
+
+/** `plans.py --json` 출력 → 패널에 쓰는 기획서 목록. 깨진 출력은 빈 목록 */
+export function parsePlans(stdout: string): KitPlan[] {
+  let rows: unknown
+  try {
+    rows = JSON.parse(stdout || '[]')
+  } catch {
+    return []
+  }
+  if (!Array.isArray(rows)) return []
+  const text = (v: unknown) => (typeof v === 'string' ? v : '')
+  const count = (v: unknown) => (typeof v === 'number' ? v : 0)
+  return rows
+    .filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null && !r.stale)
+    .map(r => ({
+      title: text(r.title),
+      status: text(r.status),
+      branch: text(r.branch),
+      worktree: text(r.worktree),
+      remaining: count(r.remaining),
+      total: count(r.total),
+      next: text(r.next),
+      conflict: r.conflict === true,
+      needsCheck: r.needsCheck === true,
+    }))
+}
+
+/** 패널 한 줄: 제목 · 상태 · 남은 단계 */
+export function planLine(p: KitPlan): string {
+  if (p.conflict) return `${p.title} · 충돌 (worktree마다 진행이 다름)`
+  const parts = [p.title, p.status, `남은 ${p.remaining}/${p.total}`]
+  if (p.needsCheck) parts.push('상태 확인 필요')
+  return parts.join(' · ')
+}
+
+// 계산은 plans.py 한 곳에 둔다 (SessionStart 훅과 같은 규칙). $.plugin.root는 plugin.json이 있는 폴더
+function kitRoot($: EngineInterface): string {
+  return $.plugin.root.replace(/[\\/]\.claude-plugin[\\/]?$/, '')
+}
+
+async function activePlans($: EngineInterface, cwd: string): Promise<KitPlan[]> {
+  const root = kitRoot($)
+  const r = await $.process
+    .run(['sh', `${root}/scripts/py.sh`, `${root}/scripts/plans.py`, '--cwd', cwd, '--json'], { cwd, timeoutMs: 10000 })
+    .catch(() => undefined)
+  return r && r.exitCode === 0 ? parsePlans(r.stdout) : []
+}
+
 async function projectStatus($: EngineInterface): Promise<KitStatus> {
   const cwd = await $.session.cwd()
   const root = await git($, cwd, ['rev-parse', '--show-toplevel'])
-  if (!root) return { isKit: false, todos: [], unlogged: 0 }
+  if (!root) return { isKit: false, plans: [] }
   const repo = root.split('/').pop()
-  const devlogDir = `${root}/docs/devlog`
-  if (!(await $.fs.exists(devlogDir))) return { repo, isKit: false, todos: [], unlogged: 0 }
-
-  const claudeMd = await $.fs.read(`${root}/CLAUDE.md`).catch(() => '')
-  const category = typeof claudeMd === 'string' ? CATEGORY.exec(claudeMd)?.[1] : undefined
-
-  const files = (await $.fs.list(devlogDir))
-    .filter(f => f.kind === 'file' && DEVLOG_FILE.test(f.name))
-    .map(f => f.name)
-    .sort()
-  const texts: string[] = []
-  for (const name of files) {
-    const text = await $.fs.read(`${devlogDir}/${name}`).catch(() => '')
-    texts.push(typeof text === 'string' ? text : '')
-  }
-
-  const log = (await git($, root, ['log', '--since=3.days', '--no-merges', '--format=%h %s'])) ?? ''
-  const { lastLog, todos, unlogged } = devlogSummary(texts, log)
-
-  return { repo, isKit: true, category, lastLog, todos, unlogged }
-}
-
-/**
- * devlog 파일 내용(오래된 달부터)과 `git log --format="%h %s"` 출력으로
- * 마지막 항목 제목, 체크 안 된 다음 할 일, devlog에 없는 커밋 수를 구한다.
- */
-export function devlogSummary(texts: readonly string[], log: string) {
-  const entries = (texts.at(-1) ?? '').split(/^(?=## )/m).filter(s => s.startsWith('## '))
-  const last = entries.at(-1)
-  const lastLog = last?.split('\n')[0]?.slice(3).trim()
-  const todoBlock = last ? /\*\*다음 할 일\*\*\s*\n([\s\S]*?)(?=^\*\*|$(?![\s\S]))/m.exec(last)?.[1] : undefined
-  const todos = (todoBlock ?? '')
-    .split('\n')
-    .filter(line => line.trim().startsWith('- [ ]'))
-    .map(line => line.trim().slice(5).trim())
-
-  // stop_reminder.py와 같은 기준: docs(devlog) 커밋은 빼고, 7자리 해시가 devlog에 없으면 미기록
-  const logged = texts.join('\n')
-  const unlogged = log
-    .split('\n')
-    .filter(line => line && !line.slice(line.indexOf(' ') + 1).startsWith('docs(devlog)'))
-    .filter(line => !logged.includes(line.slice(0, 7))).length
-
-  return { lastLog, todos, unlogged }
+  const read = await $.fs.read(`${root}/CLAUDE.md`).catch(() => '')
+  const claudeMd = typeof read === 'string' ? read : ''
+  const isKit = isKitProject(claudeMd, await $.fs.exists(`${root}/docs/devlog`))
+  const category = isKit ? CATEGORY.exec(claudeMd)?.[1] : undefined
+  return { repo, isKit, category, plans: await activePlans($, root) }
 }
 
 async function refresh($: EngineInterface): Promise<void> {
@@ -102,7 +117,8 @@ async function isOpen($: EngineInterface): Promise<boolean> {
 // 패널을 열 수 없는 곳(좁은 화면이 아닌 -p 실행 등)에서 대신 보여줄 텍스트
 function asText(list: KitSkill[], now: KitStatus | null): string {
   const lines = list.map(s => `/${s.name}  ${s.summary}`)
-  if (now?.isKit) lines.push('', `이 프로젝트: ${now.repo} (${now.category ?? '구분 없음'})`)
+  if (now?.repo) lines.push('', `이 프로젝트: ${now.repo} (${now.isKit ? (now.category ?? '구분 없음') : 'kit 프로필 없음'})`)
+  for (const p of now?.plans ?? []) lines.push(`· ${planLine(p)}`)
   return lines.join('\n')
 }
 
@@ -111,7 +127,7 @@ export const register: Register = on => {
     const started = await next(e)
     await $.command.register({
       name: 'kit',
-      description: 'kit 패널 열기/닫기: 스킬 목록과 이 프로젝트의 devlog 상태',
+      description: 'kit 패널 열기/닫기: 스킬 목록과 진행 중 기획서',
     })
     return started
   })
@@ -130,7 +146,7 @@ export const register: Register = on => {
     return { text: 'kit 패널을 열었습니다. 다시 /kit 하면 닫힙니다.' }
   })
 
-  // 패널이 열려 있으면 Claude의 답이 끝날 때마다 상태를 새로 읽는다 (커밋, devlog 반영)
+  // 패널이 열려 있으면 Claude의 답이 끝날 때마다 상태를 새로 읽는다 (기획서 단계 반영)
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     if (await isOpen($)) void refresh($).catch(() => undefined)
@@ -159,20 +175,19 @@ export const register: Register = on => {
         <Text bold>이 프로젝트</Text>
         {now === null && <Text dimColor>읽는 중…</Text>}
         {now !== null && !now.repo && <Text dimColor>git 레포가 아닙니다.</Text>}
-        {now !== null && now.repo && !now.isKit && (
-          <Text dimColor>{`${now.repo}: kit 프로젝트가 아닙니다. /kit:init 으로 시작`}</Text>
+        {now !== null && now.repo && (
+          <Text>{`${now.repo} · ${now.isKit ? (now.category ?? '구분 없음') : 'kit 프로필 없음'}`}</Text>
         )}
-        {now !== null && now.isKit && (
+        {now !== null && now.repo && now.plans.length === 0 && <Text dimColor>진행 중 기획서 없음</Text>}
+        {now !== null && now.plans.length > 0 && (
           <Box flexDirection="column">
-            <Text>{`${now.repo} · ${now.category ?? '구분 없음'}`}</Text>
-            <Text dimColor>{`최근 devlog: ${now.lastLog ?? '없음'}`}</Text>
-            <Text color={now.unlogged > 0 ? 'yellow' : undefined}>
-              {now.unlogged > 0 ? `기록 안 된 커밋 ${now.unlogged}개 → /kit:devlog` : '기록 안 된 커밋 없음'}
-            </Text>
-            {now.todos.length > 0 && <Text bold>{`다음 할 일 ${now.todos.length}개`}</Text>}
-            {now.todos.map(todo => (
-              <Text key={todo} wrap="truncate-end">{`· ${todo}`}</Text>
+            <Text bold>{`진행 중 기획서 ${now.plans.length}개`}</Text>
+            {now.plans.slice(0, PLANS_SHOWN).map(p => (
+              <Text key={`${p.worktree}:${p.title}`} color={p.conflict || p.needsCheck ? 'yellow' : undefined} wrap="truncate-end">
+                {`· ${planLine(p)}`}
+              </Text>
             ))}
+            {now.plans.length > PLANS_SHOWN && <Text dimColor>{`외 ${now.plans.length - PLANS_SHOWN}개`}</Text>}
           </Box>
         )}
       </Box>

@@ -1,46 +1,38 @@
 import { expect, test } from 'claude-code/testing'
 
-import { devlogSummary, summarize } from './panel'
+import { isKitProject, parsePlans, planLine, summarize } from './panel'
 
-const DEVLOG = `# Devlog 2026-10
+const PLANS_JSON = JSON.stringify([
+  { title: '로그인', status: 'in-progress', branch: 'feat/login', worktree: '/w/login', remaining: 2, total: 5,
+    next: 'S4. 검증', current: true, path: 'docs/plans/a.md', stale: false, conflict: false, needsCheck: false, copies: [] },
+  { title: '결제', status: 'approved', branch: 'main', worktree: '/w/main', remaining: 3, total: 3,
+    next: 'S1. 설계', current: false, path: 'docs/plans/b.md', stale: false, conflict: true, needsCheck: false, copies: [] },
+  { title: '끝난 일', status: 'in-progress', branch: 'old', worktree: '/w/old', remaining: 1, total: 2,
+    next: '', current: false, path: 'docs/plans/c.md', stale: true, conflict: false, needsCheck: false, copies: [] },
+])
 
-## 2026-10-13 · Windows · main
-
-**요약**: 이전 항목
-
-**다음 할 일**
-- [ ] 이전 할 일
-
-## 2026-10-14 · macOS · feat/login
-
-**요약**: 로그인
-
-**커밋**
-- a1b2c3d feat(auth): 로그인 추가
-
-**다음 할 일**
-- [ ] 애플 로그인
-- [x] 끝난 일
-- [ ] 토큰 만료 테스트
-
-**TIL**
-- my-notes/til/x.md
-`
-
-test('마지막 devlog 항목의 제목과 체크 안 된 할 일을 읽는다', () => {
-  const log = ['a1b2c3d feat(auth): 로그인 추가', 'e4f5a6b fix(api): 오류 수정', '9999999 docs(devlog): 작업 로그'].join('\n')
-  const summary = devlogSummary([DEVLOG], log)
-  expect(summary.lastLog).toBe('2026-10-14 · macOS · feat/login')
-  expect(summary.todos).toEqual(['애플 로그인', '토큰 만료 테스트'])
-  // a1b2c3d는 기록됨, docs(devlog)는 제외, e4f5a6b만 미기록
-  expect(summary.unlogged).toBe(1)
+test('plans.py --json에서 오래된 복사본을 빼고 읽는다', () => {
+  const plans = parsePlans(PLANS_JSON)
+  expect(plans.map(p => p.title)).toEqual(['로그인', '결제'])
+  expect(planLine(plans[0]!)).toBe('로그인 · in-progress · 남은 2/5')
+  expect(planLine(plans[1]!)).toContain('충돌')
 })
 
-test('devlog가 비어 있으면 빈 상태', () => {
-  const summary = devlogSummary([], '')
-  expect(summary.lastLog).toBeUndefined()
-  expect(summary.todos).toEqual([])
-  expect(summary.unlogged).toBe(0)
+test('깨지거나 빈 출력은 빈 목록', () => {
+  expect(parsePlans('')).toEqual([])
+  expect(parsePlans('not json')).toEqual([])
+  expect(parsePlans('{"a":1}')).toEqual([])
+})
+
+test('병합됐는데 끝나지 않은 기획서는 상태 확인 필요', () => {
+  const [p] = parsePlans(JSON.stringify([{ title: 'x', status: 'approved', remaining: 1, total: 2, needsCheck: true }]))
+  expect(planLine(p!)).toBe('x · approved · 남은 1/2 · 상태 확인 필요')
+})
+
+test('kit 프로젝트: 프로필 표시나 예전 devlog 폴더', () => {
+  expect(isKitProject('# x\n<!-- 37writes-kit:profile:start -->\n- **구분**: 개인', false)).toBe(true)
+  expect(isKitProject('# 프로필 없음', true)).toBe(true)
+  expect(isKitProject('# 프로필 없음', false)).toBe(false)
 })
 
 test('설명은 첫 문장만 쓴다', () => {

@@ -9,13 +9,11 @@ import shutil
 import stat
 import sys
 
-import kitlib
 from kitlib import git
 
 MARKER = "37writes-claude-kit commit-msg"
 KIT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(KIT_ROOT, "githooks", "commit-msg")
-
 
 
 def install(repo):
@@ -52,6 +50,3 @@ if __name__ == "__main__":
     repo = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
     _, message = install(repo)
     print(message)
-    root = kitlib.git(repo, "rev-parse", "--show-toplevel")
-    if root and kitlib.register(root):
-        print(f"kit 레포 등록: {root}")

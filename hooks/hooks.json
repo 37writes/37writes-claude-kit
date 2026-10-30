@@ -1,5 +1,5 @@
 {
-  "description": "37writes kit: 세션 이어하기, Orca 작업 절차 안내, 위험 명령 확인, devlog 알림",
+  "description": "37writes kit: 진행 중 기획서 이어하기, Orca 작업 절차 안내, 위험 명령·배포 push 확인",
   "hooks": {
     "SessionStart": [
       {
@@ -24,18 +24,7 @@
           {
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/guard.py\"",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/stop_reminder.py\"",
-            "timeout": 10
+            "timeout": 15
           }
         ]
       }

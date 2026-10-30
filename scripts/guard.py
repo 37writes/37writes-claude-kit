@@ -3,6 +3,7 @@ import os
 import re
 import shlex
 
+import deploy_gate
 import kitlib
 
 DANGEROUS_RM_TARGETS = {"/", "/*", "~", "~/", "~/*", "$HOME", "$HOME/", "*", ".", "./", "./*", "..", "../"}
@@ -84,6 +85,7 @@ def deploy_reasons(command):
 PUSH = re.compile(r"\bgit(?:\s+-[Cc]\s+\S+|\s+-\S+)*\s+push\b")
 # 프로젝트 프로필(CLAUDE.md)에 이 줄이 있으면 push가 배포가 아니다 → 사용자가 커밋을 승인하면 묻지 않고 push
 PUSH_FREE = re.compile(r"^- \*\*push\*\*: 배포 아님", re.M)
+PUSH_ASK = "git push: 원격 저장소에 반영됩니다 (배포가 될 수 있음. 프로필에 'push: 배포 아님'이면 일반 push는 묻지 않는다)"
 RISKY_PUSH_OPTS = {"--force", "--force-with-lease", "--force-if-includes", "--delete", "--mirror", "--prune"}
 
 
@@ -106,23 +108,44 @@ def push_reasons(command, cwd):
             continue
         if words[:1] != ["git"]:
             continue
-        rest, repo = words[1:], here
+        rest, repo, overrides = words[1:], here, []
         while rest and rest[0].startswith("-"):
             if rest[0] == "-C" and len(rest) > 1:
                 repo = os.path.join(repo, os.path.expanduser(rest[1]))
                 rest = rest[2:]
             else:
+                overrides.append(rest[0])
                 rest = rest[2:] if rest[0] == "-c" else rest[1:]
         if rest[:1] != ["push"]:
             continue
         args = rest[1:]
         risky = any(a in RISKY_PUSH_OPTS or a.startswith("--force") or re.match(r"-[a-zA-Z]*[fd]", a)
                     or a.startswith("+") or a.startswith(":") for a in args)
-        if risky or not push_free_repo(repo):
-            return ["git push: 원격 저장소에 반영됩니다 (배포가 될 수 있음. 프로필에 'push: 배포 아님'이면 일반 push는 묻지 않는다)"]
+        if risky:
+            return [PUSH_ASK]
+        if not push_free_repo(repo):
+            # 프로필 자동 배포 정책 + 검증 기록과 맞는 push만 통과 (deploy_gate.push_allowed)
+            allowed, why = deploy_gate.push_allowed(repo, args, overrides)
+            if not allowed:
+                return [f"{PUSH_ASK} — 자동 배포 조건 불충족: {why}"]
         safe += 1
     if safe < expected:
         return ["git push: 원격 저장소에 반영됩니다 (명령을 해석하지 못해 확인)"]
+    return []
+
+
+DEPLOY_RECORDS = re.compile(r"37writes-kit[/\\]+deploy")
+READ_ONLY = {"cat", "ls", "grep", "rg", "head", "tail", "wc", "jq", "less"}
+
+
+def record_reasons(command):
+    """자동 배포 검증 기록 폴더를 deploy_gate.py 밖에서 건드리는 명령 (위조 방지, best-effort). 리다이렉트 없는 읽기는 통과."""
+    for segment in re.split(r"\n|&&|\|\||;|\|", command):
+        if not DEPLOY_RECORDS.search(segment) or "deploy_gate.py" in segment:
+            continue
+        words = command_words(segment)
+        if not (words and words[0] in READ_ONLY and ">" not in segment):
+            return ["자동 배포 검증 기록(37writes-kit/deploy)은 deploy_gate.py로만 만든다"]
     return []
 
 
@@ -156,6 +179,7 @@ reasons += push_reasons(command, data.get("cwd") or os.getcwd())
 if dangerous_rm(command):
     reasons.append("rm -rf 대상이 루트/홈/현재 폴더 전체입니다")
 reasons += deploy_reasons(command)
+reasons += record_reasons(command)
 if reasons:
     kitlib.emit({
         "hookSpecificOutput": {

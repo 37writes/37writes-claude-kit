@@ -1,7 +1,6 @@
 """37writes-kit 훅 스크립트 공통 함수."""
 import json
 import os
-import re
 import subprocess
 import sys
 
@@ -12,8 +11,9 @@ for stream in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-DEVLOG_DIR = os.path.join("docs", "devlog")
-DEVLOG_FILE = re.compile(r"^\d{4}-\d{2}\.md$")
+CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".config", "37writes-kit")
+PROFILE_START = "<!-- 37writes-kit:profile:start -->"
+PROFILE_END = "<!-- 37writes-kit:profile:end -->"
 
 
 def read_input():
@@ -23,23 +23,13 @@ def read_input():
         return {}
 
 
-def git(repo, *args):
-    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
+def git(repo, *args, timeout=None):
+    try:
+        r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     return r.stdout.strip() if r.returncode == 0 else None
-
-
-def kit_repo(cwd):
-    """kit-init을 거친 레포(= docs/devlog가 있는 git 레포)의 루트, 아니면 None."""
-    root = git(cwd, "rev-parse", "--show-toplevel")
-    if root and os.path.isdir(os.path.join(root, DEVLOG_DIR)):
-        return root
-    return None
-
-
-def devlog_files(repo):
-    d = os.path.join(repo, DEVLOG_DIR)
-    return [os.path.join(d, f) for f in sorted(os.listdir(d)) if DEVLOG_FILE.match(f)]
 
 
 def read(path):
@@ -47,37 +37,32 @@ def read(path):
         return f.read()
 
 
-REGISTRY = os.path.join(os.path.expanduser("~"), ".config", "37writes-kit", "repos.txt")
+def profile_block(text):
+    """CLAUDE.md 내용에서 kit 프로필 블록 안쪽, 없으면 None."""
+    start = text.find(PROFILE_START)
+    if start == -1:
+        return None
+    end = text.find(PROFILE_END, start)
+    return text[start + len(PROFILE_START):end if end != -1 else len(text)]
+
+
+def kit_repo(cwd):
+    """kit 프로젝트(CLAUDE.md에 프로필 표시가 있는 git 레포)의 루트, 아니면 None."""
+    root = git(cwd, "rev-parse", "--show-toplevel")
+    if not root:
+        return None
+    claude_md = os.path.join(root, "CLAUDE.md")
+    if os.path.isfile(claude_md) and PROFILE_START in read(claude_md):
+        return root
+    # 호환: 프로필 표시 없이 docs/devlog만 있는 예전 kit 레포도 commit-msg 훅 설치가 꺼지지 않게
+    if os.path.isdir(os.path.join(root, "docs", "devlog")):
+        return root
+    return None
 
 
 def canonical(path):
     """심볼릭 링크, 슬래시 방향, 대소문자(윈도우) 차이를 없앤 경로."""
     return os.path.normcase(os.path.realpath(path))
-
-
-def _registry_lines():
-    if not os.path.exists(REGISTRY):
-        return []
-    return [line.strip() for line in read(REGISTRY).splitlines() if line.strip()]
-
-
-def registered_repos():
-    """등록부에 있는 kit 레포 중 아직 존재하는 것."""
-    paths = dict.fromkeys(_registry_lines())
-    return [p for p in paths if os.path.isdir(os.path.join(p, DEVLOG_DIR))]
-
-
-def register(repo):
-    """kit 레포를 등록부에 추가한다. 폴더 탐색 없이 /kit:weekly가 레포를 찾을 수 있게."""
-    if not os.path.isdir(os.path.join(repo, DEVLOG_DIR)):
-        return False
-    repo = canonical(repo)
-    if repo in {canonical(p) for p in _registry_lines()}:
-        return False
-    os.makedirs(os.path.dirname(REGISTRY), exist_ok=True)
-    with open(REGISTRY, "a", encoding="utf-8") as f:
-        f.write(repo + "\n")
-    return True
 
 
 def emit(obj):
