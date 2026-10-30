@@ -1,7 +1,7 @@
 ---
 title: 개인 디자인 시스템과 ego lite 모바일 검증
 date: 2026-10-31
-status: approved
+status: in-progress
 tier: T1
 ---
 
@@ -41,7 +41,7 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 
 ## 작업 단계
 - [x] S1. 기획 반박 — Claude — 반례 3개와 blog 캡처 누락을 수용, 실제 모델과 확인 결과 기록
-- [ ] S2. 스킬·자산 구현 — Codex 지휘 세션 — 동일 규칙·테마 교체·ego 전용 검증이 실행 가능한 상태
+- [x] S2. 스킬·자산 구현 — Codex 지휘 세션 — ego에서 44개 폭/테마/모드 조합, 터치 메뉴, 키보드 마지막 항목, 시스템 모드, 깨진 fixture 탐지 통과. 실제 토큰 대비 88조합 통과. 프로필 검사 5종 통과(기존 디렉터리 경고 유지).
 - [ ] S3. 독립 검증 — Claude — 스킬 적용 시나리오, CSS 테마와 ego 측정 도우미 재실행
 - [ ] S4. 본체 반영과 프로젝트별 위임 — Codex 지휘 세션 — 검증된 kit 원본에서 TTC/블로그 전용 worktree 에이전트로 작업 지시 전달 증거
 
@@ -51,4 +51,7 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 - TTC와 블로그 작업은 각 프로젝트의 독립 worktree와 에이전트에게 전달된다. 위임 완료와 실제 수정/배포 완료를 구분해 보고한다.
 
 ## 남은 일
-- 기획 반박, 구현·검증, 프로젝트 위임.
+- Claude 독립 검증, 본체 반영, 프로젝트 위임.
+- skill-creator quick_validate.py는 시스템 Python에 PyYAML이 없어 실행 불가. 설치하지 않고 frontmatter/참조를 직접 확인하고 claude plugin validate를 실행했다.
+- font asset 미포함으로 미리보기는 시스템 fallback. 실제 프로젝트 글꼴 로드와 실기기는 각 프로젝트 담당자가 검증/미검증을 명시.
+- 검증 중 키보드 마지막 링크가 스크롤 영역 밖에 남는 반례를 발견해 preview의 focusin 스크롤 처리로 수정하고 재검증했다.

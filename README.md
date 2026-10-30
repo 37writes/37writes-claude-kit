@@ -31,7 +31,7 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | "이 오류 고쳐줘" + 로그 | 읽기 전용 진단 먼저 → 원인이 분명하면 바로 고치고, 아니면 조사부터 |
 | "이어서 해줘", "어디까지 했지?" | 모든 worktree의 진행 중 기획서만 모아 첫 미완료 단계부터 이어 한다 (어디까지면 보고만). 끝난·지운 기획서는 보고하지 않는다 |
 | "이 프로젝트 구조랑 개발 순서 잡아줘" | 프로젝트 설계 `docs/plans/project.md` (모듈 경계, 기능 목록과 순서) |
-| "이 화면 AI 티 안 나게 고쳐줘" | design 절차 (캡처 → 진단 → 방향 선택 → 토큰 → 전/후 비교) |
+| "이 화면 AI 티 안 나게 고쳐줘" | 디자인 프로필 재사용 → 공통 부품·테마 적용 → ego lite 모바일/데스크톱 조작·전후 검증 |
 | "점검해줘" | 빌드·테스트 + 리뷰 결과를 먼저 보고, 고르는 것만 수정 |
 | "배포해줘" | 프로필의 배포 방식대로 release 절차. 승인 조건은 harness 공통 규칙 "push와 배포", 완료는 배포한 SHA의 결과로 판정 |
 | "이거 블로그로 쓰자" | 브리프(주장별 근거 포함) → 블로그 코디네이터가 글 워커 지휘·검수. 발행 승인 조건은 harness 공통 규칙 "push와 배포" |
@@ -48,7 +48,7 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `kit:init` | 프로필(CLAUDE.md)에 작업에 필요한 사실만 보완, commit-msg 훅. 기존 내용은 덮지 않는다 (AGENTS.md만 있으면 `@AGENTS.md` + 프로필) |
 | `kit:commit` | 변경을 논리 단위로 나눠 `type(scope): 한국어 요약` 형식으로 커밋 |
 | `kit:check` | 프로필의 빌드·테스트 + 언어별 체크리스트 리뷰, 보고 후 승인된 것만 수정 |
-| `kit:design` | 캡처 → AI·템플릿 티 체크리스트 진단 → 방향 2~3개 중 선택 → 색·글꼴 토큰(대비 계산) → 전/후 캡처 비교 |
+| `kit:design` | 개인 디자인 시스템: 규칙·부품 재사용, 버전 있는 테마 CSS, 프로젝트 프로필, ego lite 터치·반응형 검증 |
 | `kit:release` | 버전·릴리즈 노트·CHANGELOG, 배포(자동 배포 정책이면 `deploy_gate.py`로 검증·확인), Amplify는 그 SHA의 job + 핵심 기능 확인 / exe 묶음·체크섬 / 앱(첫 배포 때 확정) |
 | `kit:blog` | 대화·기획서·커밋으로 블로그 글(시리즈 가능). tech-blog의 "블로그 코디네이터" 탭이 글마다 worktree와 글 워커를 띄워 지휘(도표 SVG, 다른 모델 검수, 회사 정보 필터링), 승인받은 글만 발행 |
 | `kit:feedback` | 다른 프로젝트에서 떠오른 kit 개선 아이디어를 이 저장소에 GitHub 이슈(feedback 라벨)로 |
@@ -132,3 +132,5 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 - [x] 기획은 다른 모델이 반박, 배치는 불확실성·분리 가능성으로, 승인 규칙 정리, 검증자가 고른 실패 시나리오
 - [x] blog 코디네이터 (tech-blog 본체 탭이 글 워커를 띄우고 검수·병합·정리)
 - [x] 0.15.0: 말로 요청하면 harness가 절차를 고름, 기록은 기획서와 커밋(끝나면 기획서 삭제), 모든 worktree에서 이어서 하기, 프로필 자동 배포 정책, 프로젝트 설계(project.md). devlog·til·weekly 제거
+
+- [x] 0.16.0: design을 개인 디자인 시스템으로 확장(core/neutral/paper, 출처·버전·해시, ego lite 전용 측정·터치 검증). blog 캡처도 ego 사용

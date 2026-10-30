@@ -278,8 +278,8 @@ description: "검색 결과에 보일 요약 120~160자"
 - 사진풍 삽화는 이미지 생성 도구가 연결돼 있을 때만 쓰고, 글자·명령어는 그림 안에 넣지 않는다.
 
 **검수** (1·2는 글 워커, 3·4는 코디네이터)
-1. 빌드(C절의 `BUNDLE_PATH`·ruby PATH 형태 그대로: jekyll build와 htmlproofer) 후 `_site`에서 `sh <scripts>/py.sh -m http.server <포트> --bind 127.0.0.1`로 띄워 그림이 있는 글을 캡처한다. 포트는 4100부터 비어 있는 것을 쓴다 (시리즈 워커가 동시에 띄울 수 있다):
-   `sh <scripts>/py.sh <scripts>/shot.py <url> /tmp/fig-<slug>-light.png --theme light` (`--theme dark`, `--mobile`도). 긴 페이지는 `--height`를 늘리고 `sips -c <높이> <폭> --cropOffset <y> <x>`로 잘라서 Read로 본다. 글자 겹침·넘침, 선 연결을 확인한다.
+1. 빌드(C절의 `BUNDLE_PATH`·ruby PATH 형태 그대로: jekyll build와 htmlproofer) 후 `_site`에서 `sh <scripts>/py.sh -m http.server <포트> --bind 127.0.0.1`로 띄운다. 포트는 4100부터 비어 있는 것을 쓴다.
+   브라우저 캡처·조작은 **ego lite만** 사용한다. `../design/references/ego-validation.md`와 설치된 `ego-browser skill`을 읽는다. 코디네이터가 목표당 TaskSpace 하나를 만들고 워커별 Page를 할당한다. 모바일/데스크톱·light/dark에서 그림까지 이동해 캡처하고 이미지 도구로 글자 겹침·넘침·선 연결을 확인한다. 에뮬레이션 설정·측정·캡처는 같은 실행에서 한다. `shot.py`/별도 headless로 우회하지 않는다.
 2. 새 색 조합을 썼으면 `sh <scripts>/py.sh <scripts>/contrast.py`로 잰다 (상자 바탕 `--paper-deep` 기준도).
 3. **다른 모델이 검수**한다 (코디네이터, K5). 내 결론은 주지 않고 글·SVG 경로·캡처 경로만 준다. 물을 것: 본문과 어긋나거나 본문에 없는 주장, 그림·캡션만 보고 핵심을 말할 수 있는가, 위치, title/desc·색·글자 크기, 선 방향, 본문의 기술 설명 중 틀리거나 과장된 문장.
    사용자가 진행을 볼 수 있게 **Orca 탭에서 돌린다** (사용자 결정, 2026-10-29). 코디네이터의 Run으로 글 worktree에 Codex 워커를 띄운다:
