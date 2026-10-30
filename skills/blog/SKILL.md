@@ -111,6 +111,8 @@ sh <base directory>/../../scripts/py.sh <base directory>/../../scripts/blog_coor
 - **이전 방식 글 worktree** (`.blog-brief.md`가 있고 그 안의 에이전트가 직접 쓰던 것)는 사용자가 코디네이터 탭에서 "이 worktree 넘겨받아"라고 지정할 때만 넘겨받는다. 그 worktree의 기존 에이전트는 스스로 병합·push·삭제하는 옛 절차를 갖고 있으니, 먼저 사용자에게 그 탭을 멈추거나 닫아 달라고 하고 확인을 받는다. 그다음 `.blog-brief.md`를 `<inbox>/<slug>/brief.md`로 복사하고 `state.md`를 만든 뒤 K5부터 한다. 고칠 것이 있으면 그 worktree에 새 글 워커를 띄운다 (`--worktree id:<wt id> --agent claude`, spec은 K3 양식).
 
 ### K3. 글 워커 띄우기 (편마다)
+캡처 작업 전에 설치된 ego-browser 스킬과 `ego-browser skill`을 읽는다. 코디네이터가 이 요청/시리즈의 TaskSpace 하나를 생성하거나 `state.md`의 기존 spaceId로 재사용한다. 첫 글에는 새 공간의 p1, 다음 글에는 `newPage()`가 돌려준 Page를 배정하고 **spaceId·Page label을 state.md와 spec.md에 기록**한다. 워커는 받은 Page만 쓰고 새 공간 생성/finish를 하지 않는다. 재시작 때 기존 공간이 끝났거나 사용자 제어 중이면 ego 안내대로 처리하며 조용히 대체하지 않는다.
+
 ```sh
 orca orchestration worker-start --worktree new-top-level --repo path:<main> --name post-<slug> \
   --base-branch origin/main --setup skip --display-name "[블로그] <제목>" --comment "<주제>" \
@@ -124,9 +126,9 @@ orca orchestration worker-start --worktree new-top-level --repo path:<main> --na
 **작업 지시** (`--spec`, harness 5항목. 글 워커는 이것과 브리프만 본다. 전문을 `spec.md`에 저장):
 ```text
 너는 블로그 글 워커다. blog 스킬의 "C. 글 워커" 절차를 따른다.
-대상: worktree <wt>, 브리프 <inbox>/<slug>/brief.md, 원료는 브리프에 적힌 경로
+대상: worktree <wt>, 브리프 <inbox>/<slug>/brief.md, 원료는 브리프에 적힌 경로, ego spaceId <id> / Page <label>
 변경: 2~4단계(글 쓰기, 그림, 공개 전 필터링)를 하고 브랜치에 커밋, <wt>/.blog-report.md 작성 (date: <코디네이터가 정한 값, 시리즈일 때>)
-제약: push·main 병합·rebase·worktree 삭제 금지. 본체와 다른 worktree는 수정 금지. 질문은 사용자에게 직접 하지 말고 지시문의 ask로 코디네이터에게
+제약: push·main 병합·rebase·worktree 삭제 금지. 본체와 다른 worktree는 수정 금지. ego는 배정된 Page만 사용, 새 TaskSpace/finish 금지. 질문은 사용자에게 직접 하지 말고 지시문의 ask로 코디네이터에게
 담당: _posts/<날짜>-<slug>.md, _includes/figures/<slug>/, .blog-report.md (도표 CSS를 바꿔야 하면 먼저 ask)
 완료 증거: jekyll build·htmlproofer 통과, 커밋 해시, .blog-report.md, worker_done --report-path <wt>/.blog-report.md
 ```
@@ -287,7 +289,7 @@ description: "검색 결과에 보일 요약 120~160자"
    orca orchestration worker-start --worktree id:<wt id> --agent codex --task-title "검수: <slug>" --spec "<작업 지시>" --json
    ```
    따로 기다리지 않고 K4 대기로 돌아간다 (Run inbox 하나에 모든 글의 메시지가 온다).
-   - 작업 지시(harness 5항목): 대상 = 글·SVG·캡처 PNG 경로, 변경 = 위 질문의 답을 worktree의 `.blog-review.md`에 쓰기, 제약 = 다른 파일 수정·커밋·push 금지, 담당 범위 = `.blog-review.md` 하나, 완료 증거 = 그 파일과 `worker_done --report-path <wt>/.blog-review.md`. 캡처를 열 수 없으면 SVG 코드로 판단하고 그렇다고 적게 한다.
+   - 작업 지시(harness 5항목): 대상 = 글·SVG·캡처 PNG 경로, 변경 = 위 질문의 답을 worktree의 `.blog-review.md`에 쓰기, 제약 = 다른 파일 수정·커밋·push 금지, 담당 범위 = `.blog-review.md` 하나, 완료 증거 = 그 파일과 `worker_done --report-path <wt>/.blog-review.md`. PNG 검수만이면 ego Page를 배정하지 않는다. 직접 브라우저 검수가 필요하면 같은 TaskSpace에 별도 Page를 배정하고 ID를 spec에 기록한다. 캡처를 열 수 없으면 SVG 코드로 판단하고 그렇다고 적게 한다.
    - `worker_done`을 받으면(K4) 파일을 읽고, 탭은 `worker-retain`으로 남겨 5단계 보고에 알린다 (사용자가 탭에서 검수 과정을 본다). 7단계 정리에서 release한다.
    - Orca가 없으면 `codex exec -s read-only --color never -i /tmp/fig-<slug>-light.png -o /tmp/fig-review.md - < /tmp/fig-prompt.md` (글 worktree에서), Codex도 없으면 새 서브에이전트에게 같은 내용으로 맡긴다.
 4. 검수 결과 중 반영할 것을 골라 글 워커에게 수정 지시로 보내고(K5의 6번), 다시 캡처를 받는다. 반영하지 않은 지적은 이유와 함께 5단계에서 보고한다.
@@ -356,5 +358,7 @@ description: "검색 결과에 보일 요약 120~160자"
    ```sh
    SLUG=<slug>; rm -r "$HOME/.config/37writes-kit/blog/${SLUG:?}"
    ```
+
+5. **ego 정리**: 같은 요청/시리즈의 모든 캡처·검수 워커가 끝나고 브라우저 작업이 더 없을 때 코디네이터가 `const task = await taskSpace(spaceId); await task.finish({ keep: [] });`를 정확히 한 번 실행한다. 아직 다른 글 워커가 쓰거나 사용자 제어/오류 상태면 finish하지 않고 ego 안내를 따른다. 사용자가 결과 페이지 보존을 요청한 경우에만 keep에 해당 label을 넣는다.
 
 사용자에게 글 주소와 정리 결과(지운 worktree·브랜치)를 보고한다. Orca가 없었으면 3번 대신 `git -C <main> worktree remove <경로>`와 `branch -d`.

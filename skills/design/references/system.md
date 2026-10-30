@@ -10,7 +10,24 @@
 - 테마 전환은 루트 `data-kit-theme="neutral|paper"`로 선택한다. `data-kit-mode="light|dark"`는 명시 선택이며, 없으면 시스템 설정을 따른다. 기존 모드 속성이 있으면 그 선택을 연결하고 모드 저장소를 두 개 만들지 않는다.
 - 원본 CSS는 토큰과 선택적 `.kit-*` 부품만 제공한다. 전역 reset/기존 클래스 덮어쓰기를 하지 않는다.
 - 버전이 다르면 변경점과 영향만 먼저 확인한다. 이번 작업과 무관한 부품을 자동 업그레이드하지 않는다. 프로젝트 커스텀은 이름·변경 토큰·이유를 기록한다.
-- `assets/preview.html`은 소개·읽기·작업 구성과 테마/모드를 살펴보는 로컬 시험 화면이다. 실제 제품의 부품 라이브러리를 대신하지 않는다.
+- `assets/preview.html`은 소개·읽기·작업 구성과 **토큰/테마를 보는** 로컬 시험 화면이다. 가로 항목은 해시 링크 목록이고 메뉴는 모든 폭에서 native details다. 실제 tablist/tabpanel, 데스크톱 내비→모바일 전환, loading/error의 완성된 부품 라이브러리가 아니다. 아래 계약을 프로젝트의 기존 부품에 구현하고 실제 전환점을 검증한다.
+
+기존 모드 연결 예(Chirpy의 실제 속성이 `data-bs-theme`일 때): 기존 모드 선택을 유일한 원본으로 삼고, 해당 토글 코드에서 `data-kit-mode`만 미러링한다. 토글 코드를 바꾸기 어려우면 별도 어댑터에서 아래처럼 속성 변경을 관찰한다. 이 코드는 팔레트 값이나 localStorage를 복제하지 않는다.
+
+```js
+const root = document.documentElement;
+const syncKitMode = () => {
+  const mode = root.getAttribute("data-bs-theme");
+  if (mode === "light" || mode === "dark") root.dataset.kitMode = mode;
+  else delete root.dataset.kitMode; // system
+};
+syncKitMode(); // 가능하면 첫 화면을 그리기 전에 실행
+const observer = new MutationObserver(syncKitMode);
+observer.observe(root, { attributes: true, attributeFilter: ["data-bs-theme"] });
+// SPA 컴포넌트 소유라면 unmount 시 observer.disconnect().
+```
+
+프로젝트가 다른 속성을 쓰면 실제 코드를 읽고 source 속성을 바꾼다. CSS 매핑 파일에는 `--main-bg: var(--kit-bg)` 같은 연결만 두고 dark 색값을 다시 적지 않는다.
 
 ## 공통 원칙
 

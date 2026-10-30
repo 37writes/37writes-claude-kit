@@ -10,9 +10,10 @@
   body { margin: 0; }
   header { border-bottom: 1px solid var(--kit-rule); }
   .preview-header { display:flex; gap:16px; align-items:center; justify-content:space-between; }
-  .preview-menu summary { min-height:44px; padding:8px 16px; cursor:pointer; }
+  .preview-header > strong { min-width:0; }
+  .preview-menu summary { min-height:44px; padding:8px 16px; cursor:pointer; white-space:nowrap; }
   .preview-menu nav { display:flex; flex-wrap:wrap; gap:8px; padding:8px; }
-  .preview-menu { position:relative; }
+  .preview-menu { position:relative; flex-shrink:0; }
   .preview-menu[open] nav { position:absolute; right:0; width:240px; z-index:2; background:var(--kit-surface); box-shadow:var(--kit-shadow-floating); border:1px solid var(--kit-control-border); border-radius:var(--kit-radius-control); }
   .preview-menu a { width:100%; }
   .preview-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
@@ -44,7 +45,7 @@
     <p>소개·읽기·작업 화면의 구성 예시입니다. 이 화면은 제품이나 확정된 브랜드가 아닙니다.</p>
     <div class="kit-row">
       <button class="kit-button" id="theme-switch">paper 테마 보기</button>
-      <button class="kit-button" id="mode-switch">다크 모드 보기</button>
+      <button class="kit-button" id="mode-switch">화면 모드: 라이트 (변경)</button>
     </div>
     <p class="kit-muted">웹폰트 파일을 포함하지 않은 미리보기입니다. 현재 기기의 대체 글꼴로 보일 수 있습니다.</p>
   </section>
@@ -58,7 +59,7 @@
       <h2>작업 화면</h2>
       <div class="kit-scroll">
         <nav class="kit-tabs" aria-label="작업 분류">
-          <a class="kit-tab" href="#work" aria-current="page">전체 보기</a>
+          <a class="kit-tab" href="#work" aria-current="location">전체 보기</a>
           <a class="kit-tab" href="#reading">기술 동향과 연구 기록</a>
           <a class="kit-tab" href="#intro">분야별 참고 자료 모음</a>
         </nav>
@@ -80,14 +81,29 @@
     themeSwitch.textContent = root.dataset.kitTheme === "neutral" ? "paper 테마 보기" : "neutral 테마 보기";
   });
   modeSwitch.addEventListener("click", () => {
-    root.dataset.kitMode = root.dataset.kitMode === "light" ? "dark" : "light";
-    modeSwitch.textContent = root.dataset.kitMode === "light" ? "다크 모드 보기" : "라이트 모드 보기";
+    const current = root.dataset.kitMode;
+    if (current === "light") root.dataset.kitMode = "dark";
+    else if (current === "dark") delete root.dataset.kitMode;
+    else root.dataset.kitMode = "light";
+    modeSwitch.textContent = `화면 모드: ${{ light: "라이트", dark: "다크" }[root.dataset.kitMode] || "시스템"} (변경)`;
   });
   const menu = document.querySelector(".preview-menu");
-  menu.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") { menu.open = false; document.querySelector("#menu-toggle").focus(); }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && menu.open) { menu.open = false; document.querySelector("#menu-toggle").focus(); }
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (menu.open && !menu.contains(event.target)) menu.open = false;
   });
   menu.querySelectorAll("a").forEach(a => a.addEventListener("click", () => { menu.open = false; }));
+  function markCurrent() {
+    const hash = location.hash || "#work";
+    document.querySelectorAll(".kit-tab").forEach(a => {
+      if (a.getAttribute("href") === hash) a.setAttribute("aria-current", "location");
+      else a.removeAttribute("aria-current");
+    });
+  }
+  window.addEventListener("hashchange", markCurrent);
+  markCurrent();
   document.querySelector(".kit-scroll").addEventListener("focusin", (event) => {
     event.target.scrollIntoView({ block: "nearest", inline: "nearest" });
   });

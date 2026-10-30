@@ -16,6 +16,12 @@ async function tap(page, selector) {
 
 export async function runSmoke(page, url) {
   const rows = [], colors = [];
+  const assertGeometry = audit => {
+    assert.equal(audit.environmentMatches, true, JSON.stringify(audit));
+    assert.ok(!audit.issues.some(i => ["document-horizontal-overflow", "small-target", "nowrap-contract-candidate",
+      "outside-viewport", "clipped-by-ancestor", "clipped-control"].includes(i.type)), JSON.stringify(audit.issues));
+    assert.equal(audit.counts.nowrapInspected, 4, "summary and three horizontal links must be measured");
+  };
   try {
     for (const theme of ["neutral", "paper"]) {
       for (const mode of ["light", "dark"]) {
@@ -28,10 +34,14 @@ export async function runSmoke(page, url) {
             document.documentElement.dataset.kitTheme = theme;
             document.documentElement.dataset.kitMode = mode;
           }, { theme, mode });
-          const audit = await measureUI(page, { expectedWidth: width, expectedMobile: mobile, expectedMode: mode, nowrapSelector: ".kit-tab" });
-          assert.equal(audit.environmentMatches, true, JSON.stringify(audit));
-          assert.ok(!audit.issues.some(i => ["document-horizontal-overflow", "small-target", "nowrap-contract-candidate"].includes(i.type)), JSON.stringify(audit.issues));
-          rows.push({ theme, mode, width, actual: audit.actual.width, touch: audit.actual.coarsePointer });
+          const audit = await measureUI(page, { expectedWidth: width, expectedMobile: mobile, expectedMode: mode });
+          assertGeometry(audit);
+          // Geometry covers rendered DOM; also visit the lower section to check actual viewport layout.
+          await page.focus("#preview-save");
+          const workAudit = await measureUI(page, { expectedWidth: width, expectedMobile: mobile, expectedMode: mode });
+          assertGeometry(workAudit);
+          rows.push({ theme, mode, width, actual: audit.actual.width, touch: audit.actual.coarsePointer,
+            measuredControls: workAudit.counts.inspected, measuredNowrap: workAudit.counts.nowrapInspected, visitedWork: true });
           if (width === 1280) {
             colors.push(await page.evaluate(({ theme, mode }) => {
               const s = getComputedStyle(document.documentElement);
@@ -60,6 +70,30 @@ export async function runSmoke(page, url) {
     assert.equal(await page.evaluate(() => document.activeElement === document.querySelector(".kit-tab:last-child") && document.querySelector(".kit-scroll").scrollLeft > 0), true);
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => location.hash === "#intro");
+    await page.waitForFunction(() => document.querySelector(".kit-tab:last-child").getAttribute("aria-current") === "location");
+    await configureViewport(page, { width: 320, mobile: true });
+    await page.goto(url);
+    await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+    assertGeometry(await measureUI(page, { expectedWidth: 320, expectedMobile: true }));
+    await tap(page, "#menu-toggle");
+    await page.waitForFunction(() => document.querySelector(".preview-menu").open);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.evaluate(() => !document.querySelector(".preview-menu").open), true);
+    // A regression below the first viewport must be detected without relying on a screenshot.
+    await page.goto(url);
+    await page.evaluate(() => {
+      const s = document.createElement("style");
+      s.textContent = ".kit-tab{white-space:normal!important;flex-shrink:1!important}.kit-tabs{inline-size:auto!important} #preview-save{min-height:0;height:24px;padding:0;font-size:12px}";
+      document.head.append(s);
+    });
+    const belowFold = await measureUI(page, { expectedWidth: 320, expectedMobile: true });
+    assert.ok(belowFold.issues.some(i => i.type === "nowrap-contract-candidate"));
+    assert.ok(belowFold.issues.some(i => i.type === "small-target" && i.id === "preview-save"));
+    await page.goto(url);
+    const closedMenu = await measureUI(page, { controlSelector: ".preview-menu a", nowrapSelector: ".preview-menu a" });
+    assert.equal(closedMenu.counts.inspected, 0);
+    assert.equal(closedMenu.counts.hidden, 3);
+    assert.equal(closedMenu.issues.length, 0);
     // Test explicit appearance takes precedence over media; then system follows media.
     await configureViewport(page, { width: 390, mobile: true, mode: "dark" });
     await page.goto(url);
@@ -71,7 +105,14 @@ export async function runSmoke(page, url) {
     assert.ok(broken.issues.some(i => i.type === "document-horizontal-overflow"));
     assert.ok(broken.issues.some(i => i.type === "small-target"));
     assert.equal(broken.environmentMatches, false);
-    return { rows, colors, touchMenu: true, keyboardMenuAndLastLink: true, systemMode: true, brokenFixtureDetected: true };
+    await page.evaluate(() => {
+      document.documentElement.style.overflowX = "hidden";
+      document.body.style.overflowX = "hidden";
+    });
+    const masked = await measureUI(page, { expectedWidth: 390, expectedMobile: true });
+    assert.ok(masked.issues.some(i => i.type === "clipped-by-ancestor" || i.type === "outside-viewport"));
+    return { rows, colors, touchMenu: true, keyboardMenuAndLastLink: true, systemMode: true, brokenFixtureDetected: true,
+      enlargedText: true, belowFoldRegression: true, closedDetailsExcluded: true, maskedOverflowDetected: true };
   } finally {
     await resetViewport(page);
   }

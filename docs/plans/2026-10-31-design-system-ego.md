@@ -50,6 +50,14 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 - Claude가 설계와 구현을 교차 검토하고 발견한 범위 내 결함을 해소한다.
 - TTC와 블로그 작업은 각 프로젝트의 독립 worktree와 에이전트에게 전달된다. 위임 완료와 실제 수정/배포 완료를 구분해 보고한다.
 
+## S3 검증 반영
+- Claude Opus 5.5 (자기 보고), Task `task_c854fa50a5dc`, Dispatch `ctx_ec28188810ac`가 독립 검증. `validation.md` 참고.
+- F1/F2 수용: 초기 44행은 좁은 폭에서 아래 작업 영역을 직접 검사하지 않은 한계가 있었다. 렌더 DOM 전체 측정 + 검사 개수 + 아래 영역 실제 방문을 추가하고, 320px/200% 메뉴 nowrap·축소 방지 및 회귀를 추가.
+- F3/F4/F8 수용: 닫힌 details 제외, 조상 clipping과 의도한 scroll 구별, 정상 input 자체 스크롤 오탐 제거.
+- F5/F6 수용: blog K3/spec/정리에 spaceId·Page·finish 경로, 기존 모드 속성 미러 어댑터 추가.
+- F7/F9 부분 수용: 샘플은 토큰 미리보기이며 실제 tablist/반응형 nav 라이브러리가 아님을 명시. 링크 현재 위치/터치 후 Escape·바깥 닫기/3단 모드 수정. 실제 프로젝트 부품은 위임한 범위에서 구현·검증한다.
+- 수정 뒤 44행에서 각각 위/아래 방문 및 8개 실조작/회귀 플래그 통과. 320px/200% 캡처를 직접 확인.
+
 ## 남은 일
 - Claude 독립 검증, 본체 반영, 프로젝트 위임.
 - skill-creator quick_validate.py는 시스템 Python에 PyYAML이 없어 실행 불가. 설치하지 않고 frontmatter/참조를 직접 확인하고 claude plugin validate를 실행했다.

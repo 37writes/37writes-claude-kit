@@ -5,308 +5,440 @@
       "mode": "light",
       "width": 320,
       "actual": 320,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 360,
       "actual": 360,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 390,
       "actual": 390,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 430,
       "actual": 430,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 639,
       "actual": 639,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 640,
       "actual": 640,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 641,
       "actual": 641,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 767,
       "actual": 767,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 768,
       "actual": 768,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 769,
       "actual": 769,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "light",
       "width": 1280,
       "actual": 1280,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 320,
       "actual": 320,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 360,
       "actual": 360,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 390,
       "actual": 390,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 430,
       "actual": 430,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 639,
       "actual": 639,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 640,
       "actual": 640,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 641,
       "actual": 641,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 767,
       "actual": 767,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 768,
       "actual": 768,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 769,
       "actual": 769,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "neutral",
       "mode": "dark",
       "width": 1280,
       "actual": 1280,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 320,
       "actual": 320,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 360,
       "actual": 360,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 390,
       "actual": 390,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 430,
       "actual": 430,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 639,
       "actual": 639,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 640,
       "actual": 640,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 641,
       "actual": 641,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 767,
       "actual": 767,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 768,
       "actual": 768,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 769,
       "actual": 769,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "light",
       "width": 1280,
       "actual": 1280,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 320,
       "actual": 320,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 360,
       "actual": 360,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 390,
       "actual": 390,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 430,
       "actual": 430,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 639,
       "actual": 639,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 640,
       "actual": 640,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 641,
       "actual": 641,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 767,
       "actual": 767,
-      "touch": true
+      "touch": true,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 768,
       "actual": 768,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 769,
       "actual": 769,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     },
     {
       "theme": "paper",
       "mode": "dark",
       "width": 1280,
       "actual": 1280,
-      "touch": false
+      "touch": false,
+      "measuredControls": 8,
+      "measuredNowrap": 4,
+      "visitedWork": true
     }
   ],
   "colors": [
@@ -382,5 +514,9 @@
   "touchMenu": true,
   "keyboardMenuAndLastLink": true,
   "systemMode": true,
-  "brokenFixtureDetected": true
+  "brokenFixtureDetected": true,
+  "enlargedText": true,
+  "belowFoldRegression": true,
+  "closedDetailsExcluded": true,
+  "maskedOverflowDetected": true
 }

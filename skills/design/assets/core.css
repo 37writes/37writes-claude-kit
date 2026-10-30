@@ -46,7 +46,7 @@
 }
 .kit-button, .kit-tab { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; cursor: pointer; }
 .kit-button:hover, .kit-tab:hover { background: var(--kit-surface-alt); }
-.kit-button[data-variant="primary"], .kit-tab[aria-selected="true"], .kit-tab[aria-current="page"] {
+.kit-button[data-variant="primary"], .kit-tab[aria-selected="true"], .kit-tab[aria-current]:not([aria-current="false"]) {
   background: var(--kit-accent); color: var(--kit-on-accent); border-color: var(--kit-accent);
 }
 .kit-button:disabled { color: var(--kit-muted); background: var(--kit-surface-alt); cursor: not-allowed; }

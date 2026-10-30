@@ -35,7 +35,8 @@ try {
 ```
 
 도우미는 DOM 측정만 한다. 모드 media와 앱에 저장된 명시적 모드는 다를 수 있으므로 앱의 실제 모드도 확인한다.
-`measureUI`는 글꼴 대기 뒤 viewport, touch/pointer, 문서 넘침, 좁은 조작영역·nowrap 위반·잘림 **후보**와 조사 한계를 반환한다. 후보 0개를 “UI 검증 통과”로 출력하지 않는다.
+`measureUI`는 글꼴 대기 뒤 viewport, touch/pointer, 렌더된 DOM 전체의 좁은 조작영역·nowrap 위반·조상에 의한 잘림 **후보**와 조사 한계를 반환한다. 닫힌 details는 제외하고, 화면 아래의 요소도 기하를 측정한다. 후보 0개를 “UI 검증 통과”로 출력하지 않는다.
+`counts.inspected/nowrapInspected/hidden/offscreen`, `truncated`, `coverageWarnings`를 읽어 의도한 요소가 검사됐는지 확인한다. 선택자가 0개를 찾거나 lazy/virtualized 요소가 아직 DOM에 없으면 미검사다. **화면 아래/내부 스크롤 영역까지 실제로 이동한 뒤** 다시 측정·조작한다. `outside-scroll-window`는 의도한 스크롤인지와 끝까지 도달하는지 확인하고, `outside-viewport`/`clipped-by-ancestor`는 실패 원인을 조사한다. 정상 input/textarea 내부의 값 스크롤은 잘림 후보에서 제외한다.
 
 ## 매트릭스와 실제 조작
 
@@ -81,4 +82,6 @@ await page.cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }
 
 행마다 route/상태, 테마/모드, 요청 폭과 실제 폭, touch/pointer, 글꼴, 수행 조작/기대 결과/실제 결과, 캡처 경로를 남긴다.
 CSS 해시 일치·자동 측정·실조작·눈으로 비교·빌드 결과를 함께 본다. 새 테마는 대비와 레이아웃을 다시 확인한다.
-`measureUI`는 iframe/shadow DOM, 가림/겹침 전체, 실제 글꼴 사용 여부, 가상 키보드, 브라우저별 동작, 터치 제스처를 자동 판정하지 않는다. 이 한계를 검증표에 반영한다.
+`measureUI`는 virtualized/lazy 콘텐츠, iframe/shadow DOM, 가림/겹침 전체, 실제 글꼴 사용 여부, 가상 키보드, 브라우저별 동작, 터치 제스처를 자동 판정하지 않는다. 이 한계를 검증표에 반영한다.
+
+자산/도우미 자체를 수정했을 때는 로컬로 `assets/preview.html`을 제공하고 `scripts/ego-smoke.mjs`의 `runSmoke(assignedPage, localUrl)`를 ego nodejs에서 실행한다. 이 검사는 위·아래 영역 방문, 선택자 검사 수, 200% 글자, 닫힌 details, 화면 아래 회귀, 숨긴 넘침 반례를 포함한다. 실제 프로젝트의 회귀 검사와 실조작을 대신하지 않는다.
