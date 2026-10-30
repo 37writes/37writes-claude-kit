@@ -219,3 +219,136 @@ fixture `d-ignored`: .gitignore에 `local-ok`, test_app.py는 `Path('local-ok').
 - Claude 전용 훅을 Codex에 이식하거나 실행했다고 주장하지 않는다. 직접 실행한 스크립트와 새 Claude 세션의 실제 호출만 근거로 삼았다.
 
 **최종 판정: FAIL. 자동 검사 136건(guard 58 + deploy 40 + plans 32 + plugin 6)은 통과했으나, 필수 수정 F1~F5와 위 미검증 사항이 남았다.** 기존 guard 별도 49건은 이 합계에 중복 가산하지 않았다.
+
+## 2회차 재검증
+
+검증자 agent: Codex (독립 검증자 S2-r)
+실제 모델: `global.openai.gpt-6-astra` — 실행 중 `orca orchestration worker-show --dispatch ctx_d1122cd7abd5 --json`의 `projection.provider.model`로 확인
+시각: 2026-10-30 23:28 KST 시작, 2026-10-30 23:32:38 KST 보고서 작성 완료
+Task ID: `task_5c37386c9adc` / Dispatch ID: `ctx_d1122cd7abd5`
+대상: `1d47d0f..378413bccd9493d9aa8e9677b7098967f4798f5a`. 이 절의 `<tmp>`는 `/tmp/kit-s2-r2`, 1회차 fixture는 위 보고서의 기존 임시 레포를 뜻한다. 1회차 본문은 수정하지 않았다.
+
+**판정: FAIL — 남은 필수 수정 2건(문서 F4 잔여, 등록부 보존 결정 문장 잔여).** F1·F2·D3·F3·F5의 직접 재현은 모두 수정 결과를 확인했다. 등록부가 검사 중 재생성된 환경 상태도 발견했으나, 현재 코드가 쓴 것으로 단정하지 않았다.
+
+### 1. 자동 검사·범위·시크릿·줄 수
+
+실행 명령: `claude plugin validate .`, `command claude plugin test .`, `sh scripts/test_guard.sh`, `sh scripts/test_deploy_gate.sh`, `sh scripts/test_plans.sh`. 스크립트 테스트는 `HOME=<tmp>/home`, Python은 `PYTHONDONTWRITEBYTECODE=1`. Python subprocess가 `/bin/sh`에서 실행하므로 zsh alias는 적용되지 않는다.
+
+| 명령 | 실제 결과 | 로그 |
+|---|---|---|
+| plugin validate | exit 0, Validation passed with warnings | `<tmp>/validate.log` |
+| plugin test | exit 0, 6 pass / 0 fail | `<tmp>/plugin.log` |
+| test_guard | exit 0, 58 ok / 0 FAIL | `<tmp>/guard.log` |
+| test_deploy_gate | exit 0, 56 ok / 0 FAIL | `<tmp>/deploy.log` |
+| test_plans | exit 0, 32 ok / 0 FAIL | `<tmp>/plans.log` |
+
+총 **152건 통과**(58+56+32+6). validate의 루트 CLAUDE 경고·LICENSE_MISSING(별도 디렉터리 제출 검사)·ICON_MISSING은 그대로다.
+
+- `git diff --stat 1d47d0f..HEAD`: **13 files, 256 insertions, 79 deletions**. deploy_gate와 그 테스트, 기획 결정 기록, harness·plan·commit·init·release·blog 문서, README·CLAUDE, Coder 보고서만이다. 지정된 재작업 범위 안이다 (`<tmp>/stat.log`).
+- `git diff 1d47d0f..HEAD | grep -nE 'AKIA|secret|api[_-]?key|BEGIN .*PRIVATE'`: **1줄**, 기존 `SECRETS` 정규식이 diff 문맥에 나타난 것. 실제 시크릿 없음 (`<tmp>/secret-grep.log`).
+- 추가된 `/Users/` 문자열은 Coder B 보고의 grep 명령 1건. 실제 로컬 절대 경로 추가 **0건**.
+- `skills/harness/SKILL.md` **149줄**, 170줄 제한 통과.
+
+### 2. F1·F2·D3와 이전 기록 재현 — PASS
+
+실행: `python3 <tmp>/replay.py`. **1회차의 실제 동일 fixture·동일 커밋**에 새 `<worktree>/scripts/deploy_gate.py`를 실행했다. 정책이나 테스트 코드를 새 구현에 맞춰 바꾸지 않았다. 실행 HOME은 `<tmp>/home`으로 격리했다.
+
+```sh
+python3 <worktree>/scripts/deploy_gate.py verify --repo <1회차 d-mutation> --sha 6fe16b64b0891f4556ef2f7ed2ae863bbb6f7812
+python3 <worktree>/scripts/deploy_gate.py confirm --repo <1회차 d-confirm> --sha 25e6b8979cf4d4b532a02fee419e497dab35df4d
+python3 <worktree>/scripts/deploy_gate.py verify --repo <1회차 d-ignored> --sha 5ef727a8e123b4a19a8c78eca552c448899e961a
+```
+
+| 재현 | 1회차 | 2회차 실제 결과 |
+|---|---|---|
+| D1: verify.sh가 app.txt를 broken→fixed | verify 0, guard 통과 | **verify 3**, app.txt 변경 명시, 원래 SHA push의 hook JSON → **ask**, 검증 실패 기록 |
+| D2: 커밋된 check.sh는 exit 9, 작업 폴더만 exit 0 | confirm 0 | **confirm 9**, 커밋된 스크립트 실행, 작업 폴더의 수정본 그대로 |
+| D3: ignored local-ok에 테스트가 의존 | verify 0 | **verify 1**, local-ok가 없는 임시 checkout의 unittest 실패 |
+
+guard 재현은 `{"cwd":"<fixture>","tool_input":{"command":"git push origin <sha>:refs/heads/main"}}`를 `python3 <worktree>/scripts/guard.py`의 stdin으로 전달했다. 실제 push는 하지 않았다.
+
+- 1회차 f-manual의 실제 이전 성공 기록(SHA `5591cbc72e00f90881f9dc4663a0b08c4c1babf2`, `format` 없음·exit 0)을 그대로 검사: **ask**, `예전 형식이거나 임시 checkout 검증이 아닌 기록`.
+- 같은 SHA에 새 verify 실행 후 **exit 0**, 새 기록으로 guard stdout 빈 문자열(통과). 이전 형식 차단이 모든 정상 배포 후보를 막는 회귀는 아니다.
+- 모든 직접 실행 전후 `git worktree list --porcelain`을 비교했고, 임시 등록이 남지 않았다. 사용자 fixture의 HEAD·dirty 파일 상태도 전후 동일하다.
+- 근거: `<tmp>/replay.json`. 코드에서 `deploy_gate.py:240`의 임시 checkout, `:257`의 HEAD·tracked 변경 확인, `:203`의 기록 format 검사, `:310`의 confirm 임시 실행을 직접 읽었다.
+
+### 3. F3 새 기능 세션 — PASS
+
+새 임시 git 레포 `<tmp>/feature`에 profile marker·Python 표준 라이브러리·unittest·push 배포 아님·원격 없음만 준비했다. 요청은 1회차와 동일한 median 구현/테스트/커밋 요청이며, done 갱신이나 삭제 커밋 순서를 프롬프트에 답으로 알려 주지 않았다.
+
+실행: `python3 <tmp>/session.py feature '<median(values) 구현하고 커밋까지, push 금지, 기획부터 마무리까지 kit 절차>'`. 드라이버는 직접 claude argv로 `--plugin-dir <worktree> -p --output-format stream-json --verbose`를 실행하고 `TERM_PROGRAM` 및 모든 `ORCA_*`를 제거했다. 1회차와 같은 allowedTools이며 Orca는 허용하지 않았다. 공통 프롬프트는 추천값·단일 세션·임시 레포 외 쓰기 금지·push/배포 금지다.
+
+실제 도구 호출: `Skill kit:harness` → `Read plan/SKILL.md` → commit 스킬 Read → 기획서 Write 및 커밋 → stats.py·test_stats.py Write → 테스트 실행 → **기획서 체크박스·결과·status: done Edit** → **작업 커밋** → **git rm 및 삭제 커밋**.
+
+| 작업 커밋 | 내용 | Refs |
+|---|---|---|
+| `99b2f0e` | docs(plan): median 함수 기획 | 있음 |
+| `5760f85` | feat(stats): 중앙값 구현·테스트·done 기획서 | 있음 |
+| `a459720` | docs(plan): 완료 기획서 삭제 | 있음 |
+
+- `git show a459720^:docs/plans/2026-10-30-median.md`: **status: done**, `[x]` 2개·`[ ]` 0개, 단계 결과 2개 및 별도 실패 시나리오 결과·남은 일 포함. `<tmp>/feature-done-plan.md`로 보관했다.
+- `git log --format=%h\ %s%n%b -4`에서 기획 커밋을 포함한 작업 커밋 **3/3에 Refs**. 초기 fixture 커밋은 작업 전이므로 제외했다.
+- 독립 재실행 `PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s <tmp>/feature -v`: **7/7 통과**. 마지막 git status 빈 출력. push·merge·Orca 호출 없음.
+- 세션 exit 0, 실제 모델 `global.anthropic.claude-opus-5-5`(stream-json init). 도구 22건, 복합 Bash 3건은 allowedTools 거절 뒤 개별 명령으로 재시도했다. 거절을 성공으로 세지 않았다.
+
+### 4. F5 동일 재개 fixture의 새 세션 — PASS
+
+실행: `python3 <tmp>/session.py resume '어디까지 했지? 파일은 바꾸지 말고 진행 상황만 알려줘.' <1회차 c-resume>`.
+
+- 동일 c-resume/main·resume-active·resume-stale 구조를 사용했다. 종료·삭제 기획서는 fixture에 그대로 있다.
+- `Skill kit:harness` 뒤 **plans.py를 --all 없이 실행**했다. 이어 실제 기획서 Read는 **active.md 하나**뿐이다. 파일명 Glob은 했지만 done.md나 삭제된 old.md의 내용 Read·cat은 없다.
+- 최종 답변은 **Active only·S1 미완료**만 보고했고, `Deleted old`, `Completed done`이나 종료 작업 설명을 다시 출력하지 않았다.
+- Write·Edit 없음. 대상 fixture status·HEAD 변화 없음. 세션 exit 0, 실제 모델 `global.anthropic.claude-opus-5-5`, 도구 10건. 최초 변수 할당 복합 Bash 1건은 거절됐고 직접 `sh <worktree>/scripts/py.sh .../plans.py` 호출로 성공했다.
+- 새 Claude 세션은 이번 회차 **2회**만 실행했다(상한 3회). 원문 `<tmp>/feature.jsonl`, `<tmp>/resume.jsonl`, 정리 `<tmp>/runtime-results.json`.
+
+### 5. F4 규칙 소유 위치 — 부분 수정, FAIL 잔여
+
+실행: `rg -n '승인|확인|push|태그' skills README.md CLAUDE.md`, `rg -n harness skills/blog/SKILL.md` 및 해당 문단 전체를 직접 읽었다. Coder B의 분류를 판정 근거로 사용하지 않았다.
+
+**수정 확인:** harness:63에 태그 push·릴리즈 생성·파일 전달 승인 규칙이 들어갔다. release:11은 그 조건을 harness에 맡기는 명시적 참조로 바뀌었고, :56·:74의 명령 순서는 그 참조 아래의 실행 절차다. README:72·79, CLAUDE:50·54, init:49·76의 일반/자동 배포 승인 설명도 harness 참조로 바뀌었다. 정책 형식·guard 구현 설명이나 “승인 후 이 명령 실행”이라는 절차는 별도 정의로 세지 않았다.
+
+**남은 정의:**
+
+- `skills/blog/SKILL.md:16`: “글 써줘”의 허용 범위와 main 병합·push가 가능한 승인 조건을 여전히 자체 정의한다. :164는 “승인은 글마다”를 다시 정의한다. blog의 harness 참조는 :124·:290의 **작업 지시 5항목**뿐이고 승인 규칙 참조는 없다.
+- `README.md:37`: “발행은 글마다 승인”이라는 독립 조건이 남는다.
+- `CLAUDE.md:53`: 마지막 문장 “글 써줘는 작성·검수까지이고 발행은 글마다 승인”은 과거 결정의 이유만 설명하는 것이 아니라 현재 승인 범위를 재정의한다.
+
+harness 의도 표(:25)에도 동일 블로그 승인 조건이 있다. 따라서 현 조건끼리의 실행 모순은 없지만 **“harness 밖에 승인 여부 정의가 없다”는 조건은 아직 충족하지 않는다**. 블로그가 자동 배포 정책의 제외 대상이라는 사실은 승인 규칙 소유 위치를 별도 파일로 나눠도 된다는 뜻은 아니다. 해당 조건을 harness 공통 규칙에 두고 blog·README·CLAUDE는 그것을 참조하게 하면 된다. K6의 질문 형식·승인 기록 등 상세 절차는 blog에 유지할 수 있다.
+
+### 6. 사용자 삭제 결정·재생성 여부 — 문서 FAIL 1건, 환경 재생성 관찰
+
+실행: `grep -rn 'my-notes\|repos.txt\|등록부' skills README.md CLAUDE.md docs/plans/2026-10-30-harness-flow.md`. 결과는 `<tmp>/deletion-refs.log`.
+
+- README:109~110, CLAUDE:44·65는 삭제됨으로 수정됐고 blog는 my-notes 경로를 제거했다.
+- **기획서 :104에 “등록부는 쓰기를 멈추고 파일은 둔다 … 사용자 파일은 지우지 않는다”가 그대로 남았다.** :106의 최신 삭제 결정과 충돌한다. 이전 결정이라는 표시도 없다. :104를 삭제하거나 명시적으로 폐기된 결정으로 바꿔야 한다.
+- 두 세션 뒤 `~/Documents/dev/my-notes`는 **없음**. 그러나 `~/.config/37writes-kit/repos.txt`는 **있음**이다. 생성·수정 모두 **23:29:41.463 KST**, 내용은 `<worktree>` 경로 한 줄이다. 1회차 삭제 뒤 다시 생긴 사실이며 그대로 보존했다(추가 삭제 금지).
+- 코디네이터에 `orca orchestration ask`로 확인했다. 코디네이터 답변: 본체 구버전 kit의 SessionStart 등록이 원인일 가능성이 높고, 현재 worktree에는 등록부 쓰기가 없으며, main 반영 뒤 정리 여부는 사용자가 결정하도록 보고하라는 지시다. **구버전이 실제 작성자라는 점까지 직접 확인된 것은 아니다.**
+- 내 실행 로그에서 자동 검사는 Python subprocess의 `/bin/sh`, 두 Claude 세션은 shell 없이 직접 argv이므로 zsh alias를 사용하지 않는다. 두 stream-json init의 kit 경로도 모두 `<worktree>`·version 0.15.0이며 본체 kit를 로드하지 않았다. 등록된 경로도 두 임시 세션 cwd와 다르다. 이 사실만으로 외부 생성자를 확정할 수는 없다.
+- 현재 `scripts/`·`hooks/`의 `repos.txt|register\(|REGISTRY|CONFIG_DIR` 검색에서 등록부 관련 항목은 test_plans의 미생성 검사뿐이며 쓰기 구현은 없다. 추가로 `HOME=<tmp>/registry-probe-home`에서 현재 session_start.py에 feature fixture cwd JSON을 직접 넣음 → exit 0·harness 안내, **repos.txt 생성 없음** (`<tmp>/registry-probe.json`). 두 세션 종료 뒤 실 HOME 등록부 mtime도 23:29:41 그대로다.
+- 따라서 **새 코드의 등록부 쓰기 회귀로 판정하지 않는다**. 다만 “실 HOME 파일이 재생성되지 않았다”는 전체 환경 조건은 통과했다고 말할 수 없다. 구버전 제거·본체 반영 후 재발 여부는 후속 확인으로 남긴다.
+
+### 7. 독립 시나리오: tree는 같은데 검증 도중 HEAD만 바뀜 — PASS
+
+선택 이유: 이번 수정이 파일 내용만 검사하면, 버전 표시·메타데이터 커밋으로 SHA만 바뀌는 검증 단계에서 여전히 잘못된 SHA 기록을 만들 수 있다. 1회차의 파일 수정 사례와 다른 경계를 선택했다.
+
+실행: `PYTHONDONTWRITEBYTECODE=1 python3 <tmp>/independent.py`. 새 `<tmp>/head-move`와 bare clone만 사용했다. 정책의 verify.sh는 다음 한 줄이다.
+
+```sh
+git -c user.name=Validator -c user.email=validator@example.invalid commit --allow-empty -qm detached-marker
+```
+
+`deploy_gate.py verify --repo <tmp>/head-move --sha c7304de12c97bcfb3df23d6c740e3773f56171c9` → **exit 3**. 검증 명령 자체는 exit 0, 원래 SHA와 headAfter의 **tree는 동일**하지만 기록은 HEAD 변경 1건을 담고 실패한다. 원래 SHA push hook JSON → **ask**. 전후 `git worktree list --porcelain` 동일, 사용자 fixture HEAD 그대로·git status 빈 출력. 커밋은 검증용 임시 detached checkout에서만 만들어졌으며 실제 원격 push·병합 없음. 원문 `<tmp>/independent.json`.
+
+### 8. 결론
+
+**FAIL, 남은 필수 수정 2건.** 재현된 코드 결함 F1·F2와 D3, 기록 F3, 재개 F5는 통과했다. 남은 것은 다음 문서 수정이다.
+
+1. **F4 잔여 — 블로그 승인 조건의 중복 정의:** `skills/blog/SKILL.md:16`, `:164`, `README.md:37`, `CLAUDE.md:53`. 승인 조건은 harness로 모으고 각 문서에서는 참조하며, 승인 요청·기록 절차는 blog에 남긴다.
+2. **사용자 결정 반영 누락:** `docs/plans/2026-10-30-harness-flow.md:104`. 등록부 보존 문장을 제거하거나 폐기된 결정임을 표시해 :106의 삭제 결정과 맞춘다.
+
+권고·미검증:
+
+- 실 HOME 등록부 재생성은 관찰했으나 작성 프로세스는 미확인이다. 현재 코드 쓰기 회귀 증거는 없고 격리 직접 실행은 미생성이다. 본체가 새 버전으로 반영된 뒤 사용자 동의에 따른 정리와 재발 확인이 필요하다. 이 회차에서 사용자 파일을 삭제하지 않았다.
+- LICENSE_MISSING은 별도 디렉터리 제출 시 해결해야 한다.
+- 실제 배포·원격 서비스·Windows·기존 보고서 폴더까지 포함한 자동 삭제는 이번 재검증 범위에서 실행하지 않았다. 모든 배포 검사는 로컬 fixture다.
+- 처음 요청된 1~8을 모두 수행했고, 새 세션은 2회 사용했다. 이 worktree에서는 이 절만 추가했으며 HEAD를 바꾸거나 소스를 수정하지 않았다.
