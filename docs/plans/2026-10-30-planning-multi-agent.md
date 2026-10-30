@@ -1,7 +1,7 @@
 ---
 title: 다른 모델의 기획 반박, 불확실성 기반 워커 배치, 승인 규칙 정리, 검증자의 독립 실패 시나리오
 date: 2026-10-30
-status: in-progress
+status: done
 tier: T1
 ---
 
@@ -78,9 +78,14 @@ kit의 목적(기획 강화, 멀티 에이전트 사용)에 맞게 harness·plan
 ## 작업 단계
 - [x] S0. 기획 반박 — Codex 워커(탭) — `plan-review.md`에 반례 ≤3 + 확인 방법, 이 기획서 "기획 반박" 섹션에 수용/기각 기록
   - 결과: 반례 3개 모두 수용, 설계·범위·완료 기준 갱신
-- [ ] S1. 네 가지 규칙 반영 — Claude Coder(탭) — `claude plugin validate .` 통과, `sh scripts/test_guard.sh` 전부 통과(guard 미변경), Orca 안/밖 훅 출력 확인, 변경은 범위 파일 안에서만, 로컬 커밋
-- [ ] S2. 독립 검증 — Codex Validator(새 탭) — S1 검사 재실행, diff 범위·시크릿, 완료 기준에서 스스로 고른 실패 시나리오 1~3개(현재 worktree를 로드한 새 세션 실행 포함), `validation.md`
-- [ ] S3. 검증 반영, devlog, 커밋 — 지휘 세션
+- [x] S1. 네 가지 규칙 반영 — Claude Coder(탭) — `claude plugin validate .` 통과, `sh scripts/test_guard.sh` 전부 통과(guard 미변경), Orca 안/밖 훅 출력 확인, 변경은 범위 파일 안에서만, 로컬 커밋
+  - 결과: `1dd46b6`(규칙), `26254ce`(보고서). validate 통과, guard 49 ok, 훅 안/밖 기대대로, 10개 파일 범위 안. 작업 중 `git checkout -- .` 실수로 수정이 한 번 되돌려져 재적용(보고서 기록)
+- [x] S2. 독립 검증 — Codex Validator(새 탭) — S1 검사 재실행, diff 범위·시크릿, 완료 기준에서 스스로 고른 실패 시나리오 1~3개(현재 worktree를 로드한 새 세션 실행 포함), `validation.md`
+  - 결과: 1회차 FAIL 1건(design:94가 harness 6단계 "적용까지 승인 + 미리보기 일치면 다시 묻지 않음"과 충돌). 런타임 시나리오 3개(반박 불가, 기획만, 점검만) PASS
+  - 재작업(S1-r, 같은 Coder 탭): `0f46523` design 승인 시점을 harness 참조로 + 지휘 세션 지적(실행 모델 확인 순서를 실측대로), `b2438be` 보고
+  - 2회차(같은 Validator 탭) PASS, 남은 필수 수정 0건. 새 관측: 정산 뒤 `projection.provider`가 null
+- [x] S3. 검증 반영, devlog, 커밋 — 지휘 세션
+  - 결과: 2회차 관측을 harness 반박 검토자 줄에 반영("실행 중에 확인해 기획서에 적는다", 한 구절, 별도 워커 재검증 없음 → validate만 재실행). devlog 기록, 로컬 커밋. push·main 병합은 승인 범위 밖이라 하지 않음
 
 ## 완료 기준
 - 반박 대상인데 다른 모델을 쓸 수 없는 상황을 준 새 세션은 구현을 시작하지 않고 예외 여부를 묻는다.
@@ -100,4 +105,17 @@ kit의 목적(기획 강화, 멀티 에이전트 사용)에 맞게 harness·plan
 - 사용자 결정이 필요한 항목: 없음 (네 가지 개선과 실제 워커 실행은 사용자가 이미 승인, push·병합·삭제는 범위 밖).
 
 ## 실행 기록
-(Run·Task·Dispatch ID, agent·model, 순서, 보고서, 주요 명령과 결과)
+Run `run_e1b772b66594` (지휘 세션 `term_355775dd-efba-44d3-9947-d530be9be910`, Claude Opus 5.5 `global.anthropic.claude-opus-5-5`), worktree `kit-planning-multi-agent` (`current`, 모든 워커가 같은 worktree의 탭). 시각은 2026-10-30 KST.
+
+| 순서 | 역할 | Task / Dispatch | agent / 확인된 모델 | 탭 | 시각 | 보고서 | 결과 |
+|---|---|---|---|---|---|---|---|
+| 1 | 기획 반박 S0 | `task_71d0499641dc` / `ctx_f9d1fc060c29` | codex / `global.openai.gpt-6-astra` (`worker-show` `projection.provider.model`, 지휘 세션이 실행 중 재확인) | `term_c88cd19f-…` | 14:47~14:49 | [plan-review.md](2026-10-30-planning-multi-agent/plan-review.md) | 반례 3개, 모두 수용 |
+| 2 | Coder S1 | `task_c1a51af85d34` / `ctx_84cf257a40ae` | claude / Opus 5.5 (워커 자기 보고. `projection.provider.model`은 null) | `term_20155be1-…` | 14:49~14:56 | [coder-report.md](2026-10-30-planning-multi-agent/coder-report.md) | `1dd46b6`, `26254ce` |
+| 3 | Validator S2 | `task_5fd623fa52b3` / `ctx_5fe7305e63f3` | codex / `global.openai.gpt-6-astra` (`projection.provider.model`, 검증자 확인) | `term_b8113c6d-…` | 14:57~15:03 | [validation.md](2026-10-30-planning-multi-agent/validation.md) 1회차 | FAIL 1건, 런타임 3개 PASS. 중간 `question` 1회(쓰기 권한 거부 → 추가 실행 2회 허용) |
+| 4 | Coder 재작업 S1-r | `task_fe2913142f69` / `ctx_d720ac131035` | claude (2와 같은 탭 재사용) | `term_20155be1-…` | 15:03~15:05 | coder-report.md "재작업 1" | `0f46523`, `b2438be` |
+| 5 | Validator 2회차 S2-r | `task_e94205a36eaa` / `ctx_d7692e01efea` | codex / `global.openai.gpt-6-astra` (3과 같은 탭 재사용) | `term_b8113c6d-…` | 15:05~15:07 | validation.md "2회차 재검증" | PASS |
+
+- 주요 명령: `orca orchestration run-create`, `worker-start --spec … --worktree current --agent codex|claude`, 재작업·재검증은 `worker-start --terminal <같은 탭>`, `check --wait --types worker_done,escalation,question`, `reply`, `check --ack`, `worker-retain`/`worker-release`, `orca worktree set --workspace-status todo→in-progress→in-review→in-progress→in-review`
+- 런타임 검증(문서 대조와 별개): 새 Claude 세션 5회(`command claude --plugin-dir <worktree> -p`, kit@inline 0.14.0 = 이 worktree 확인, 모델 `global.anthropic.claude-opus-5-5`). 처음 3회 중 2회는 `dontAsk` 모드 Write 거부로 저장 미확인 → `acceptEdits`로 2회 재실행. 최종 반박 불가·기획만·점검만 모두 PASS
+- 런타임으로 확인하지 않은 것: "구현까지 요청 시 다시 묻지 않음" 분기, T2 적용 분기(구현만/적용까지), init 실행, guard 확인 창 GUI. 이들은 문서 대조와 기존 guard 테스트로만 확인
+- 정산: S0 탭은 `worker-release`가 `user_takeover`로 retained(사용자 소유, 남음). 마지막 Dispatch 둘(4·5)은 release, reclaimable 0
