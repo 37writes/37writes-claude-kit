@@ -229,3 +229,101 @@ done
 - 종료: 2026-10-30 15:03:22 KST.
 - 기준 비교용 worktree는 `git worktree remove`로 제거했고, `/tmp/kit-s2-ctx_5fe7305e63f3`의 fixture·원시 로그·프롬프트도 제거했다. 재현 명령, 모델·세션 ID, 결과 및 거부 로그 핵심은 이 보고서에 보존했다.
 - 최종 `git status --short --untracked-files=all`에는 이 validation.md 하나만 표시됐고 `git diff --exit-code`는 0이었다. 본체·기존 다른 worktree·기존 미추적 파일은 수정하지 않았다. 커밋·push·배포·main 병합·git stash를 하지 않았다(임시 fixture 초기 커밋만 수행).
+
+
+## 2회차 재검증
+
+**최신 판정: PASS — 남은 반드시 고칠 것 0건.** 위 1회차 FAIL 기록은 당시 상태의 이력으로 보존한다. B-1/D-1은 이번 재작업으로 해소됐다.
+
+### 검증자와 범위
+
+- agent: Codex, 독립 Validator 2회차, 탭 `term_b8113c6d-613b-4fb8-9350-e4a0fc1c9afd`.
+- 실제 모델: `global.openai.gpt-6-astra`. `orca orchestration worker-show --dispatch ctx_d7692e01efea --json`의 `projection.provider.model`로 직접 확인했다. 이번 Dispatch의 `worker.startOptions.launch.effective.model`은 null이다.
+- 실행 시각: 2026-10-30 15:05~15:07 KST. 정확한 기록 완료 시각은 이 절 끝에 적는다.
+- Task `task_e94205a36eaa` / Dispatch `ctx_d7692e01efea`.
+- 대상: `82a6121..b2438be53b78f484df655df1b98cc39a6a89c43e` (`0f46523` 수정, `b2438be` Coder 보고서).
+- 규칙은 현재 worktree의 원본으로 대조했다. Coder 보고서의 검사·모델 주장을 검증 결과로 복사하지 않았다. 기존 validation.md 내용은 변경하지 않고 이 절만 추가했다.
+
+### B-1/D-1 해소: 같은 입력으로 승인 분기 대조
+
+`skills/design/SKILL.md:94`는 이제 로컬 캡처 미리보기를 보여 주고 **적용 승인을 언제 받을지는 harness 승인 규칙·6단계를 따르도록** 참조한다. 미리보기 뒤 무조건 승인받으라는 별도 지시가 없어졌다.
+
+| 같은 입력 | harness가 정한 처리 | design에서 참조를 따라 얻는 처리 | 판정 |
+|---|---|---|---|
+| 대상을 정해 적용까지 승인 + 미리보기 일치 | `skills/harness/SKILL.md:125`: 대화에서 다시 묻지 않고 적용 | `skills/design/SKILL.md:94` → harness 6단계 → 동일 | 일치 |
+| 구현만 승인 | `skills/harness/SKILL.md:57`, `:125`: 미리보기는 계획 승인을 대신하지 않으며 적용 승인 필요 | design `:94` → 같은 승인 분기 | 일치 |
+| 미리보기에 예상 밖 변경 (앞서 적용까지 승인했더라도) | `skills/harness/SKILL.md:58`, `:124`, `:125`: 멈추고 변경을 보여 준 뒤 승인 필요 | design `:94` → 같은 중지·재승인 분기 | 일치 |
+
+`skills/harness/SKILL.md:61`, `:125`의 guard 확인 창·자동 모드/훅 우회 금지는 그대로다. 대화 재질문을 없애는 첫 분기가 명령 실행 보호까지 없애지는 않는다. **1회차 B-1/D-1 해소**로 판정한다. 실제 외부 적용은 실행하지 않았으며 이 표는 변경된 문서 지시의 대조 결과다.
+
+대조 명령(cwd는 대상 worktree):
+
+```sh
+nl -ba skills/design/SKILL.md
+nl -ba skills/harness/SKILL.md
+git diff 82a6121..HEAD -- skills/design/SKILL.md skills/harness/SKILL.md CLAUDE.md
+```
+
+실제 검토에서는 Python으로 같은 파일의 해당 줄 번호와 내용을 출력해 읽었으며, 위 `nl` 명령으로 같은 파일:줄을 재현할 수 있다.
+
+### 실행 모델 문구와 이번 Run의 현재 실측
+
+다음 조회를 직접 실행했고 세 명령 모두 exit 0이었다:
+
+```sh
+orca orchestration worker-show --dispatch ctx_5fe7305e63f3 --json
+orca orchestration worker-show --dispatch ctx_84cf257a40ae --json
+orca orchestration worker-show --dispatch ctx_d7692e01efea --json
+```
+
+| Dispatch | 현재 상태 | 현재 `projection.provider.model` | 현재 `worker.startOptions.launch.effective.model` |
+|---|---|---|---|
+| `ctx_5fe7305e63f3` (1회차 Codex Validator) | completed | **필드 없음** (`projection.provider` 자체가 null) | null |
+| `ctx_84cf257a40ae` (Claude Coder) | completed | **필드 없음** (`projection.provider` 자체가 null) | null |
+| `ctx_d7692e01efea` (이번 Codex Validator) | dispatched | `global.openai.gpt-6-astra` | null |
+
+이전 두 Dispatch의 완료 시각은 각각 `2026-10-30T06:03:35.299Z`, `2026-10-30T05:56:03.483Z`였다. 현재 조회의 null을 과거 실행 모델 값으로 채워 넣지 않았다. 1회차 검증 때 직접 확인해 보고서 첫 부분에 남긴 `global.openai.gpt-6-astra`는 **그 시점의 기록**이며, 이번 재조회에서 다시 얻은 값은 아니다. 완료 상태와 provider null을 관측했을 뿐, provider가 사라지는 Orca 내부 원인까지 확인한 것은 아니다.
+
+`skills/harness/SKILL.md:50`의 새 순서인 **projection의 실제 모델 → 없으면 워커가 보고한 실행 모델 → 둘 다 없으면 미확인·완료 처리 금지**는 이 실측과 맞는다. `launch.effective.model`만으로 판정하지 않으므로 현재 Codex의 모델을 놓치지 않으며, 과거 Dispatch의 projection이 없는 경우도 후속 증거 확인으로 이어진다. `CLAUDE.md:49`의 `launch.effective.model`이 null일 수 있다는 설명도 관측과 맞다. Claude의 실제 실행 모델은 이번 worker-show 결과만으로 확인할 수 없으므로 이 재검증에서 특정 Claude 모델로 단정하지 않는다.
+
+### 회귀 검사 직접 재실행
+
+```sh
+command claude plugin validate .
+sh scripts/test_guard.sh
+git diff --stat 82a6121..HEAD
+git diff --name-only 82a6121..HEAD
+git diff 82a6121..HEAD | grep -nE 'AKIA|secret|api[_-]?key|BEGIN .*PRIVATE'
+git diff --exit-code 82a6121..HEAD -- scripts/guard.py githooks
+python3 -c 'import json; print(json.load(open(".claude-plugin/plugin.json"))["version"]); print(json.load(open(".claude-plugin/marketplace.json"))["plugins"][0]["version"])'
+```
+
+| 검사 | 결과 |
+|---|---|
+| plugin validate | exit 0, `Validation passed with warnings`. root CLAUDE.md 미로딩 경고 및 기존 directory용 LICENSE_MISSING·ICON_MISSING 알림. 이번 변경으로 새로 생긴 오류 없음 |
+| guard | exit 0, **49 ok = 30 ask + 19 pass**, FAIL 0. 출력의 `^ok `를 직접 집계했으며 1회차의 49개와 일치 |
+| 재작업 diff | **4 files, 25 insertions(+), 3 deletions(-)** |
+| 변경 파일 | CLAUDE.md, skills/design/SKILL.md, skills/harness/SKILL.md, docs/plans/2026-10-30-planning-multi-agent/coder-report.md. 승인 참조·모델 확인 문구·설명·재작업 보고서 범위에 한정 |
+| 시크릿 grep | exit **1**, 일치 **0개** (검색 결과 없음이라는 뜻이며 검사 오류 아님) |
+| guard·githooks | `git diff --exit-code` exit 0, 출력 없음. 동작 변경 없음 |
+| manifest 버전 | 두 값 모두 **0.14.0** |
+| 작업 시작 git status | 빈 출력, 기존 수정 없음 |
+
+push 등급도 다시 원문으로 확인했다. `skills/harness/SKILL.md:60`, `skills/plan/SKILL.md:103`, `skills/init/SKILL.md:72`, `skills/design/SKILL.md:94`, `CLAUDE.md:24`는 모두 배포가 되는 push를 T2로 구분한다. 일반 push는 프로필 push 줄을 따르며 프로필 없는 경우·강제/삭제 push의 확인은 harness `:60`에 유지된다. init `:101`의 초기화 중 push 금지 예외도 유지된다. design 수정은 대화 승인 시점의 참조만 바꾸었고 push 보호 범위의 확대·축소는 확인되지 않았다.
+
+### 직접 고른 독립 시나리오 1개: 모델 메타데이터가 일부 없는 Dispatch
+
+- **선택 이유**: 이번에 새로 고친 모델 확인 규칙은 모델 독립성을 증명하는 근거다. 실제 모델이 있는데 launch 값이 null이라 놓치는 경우와, 과거 Dispatch의 provider까지 없는데 agent 이름만으로 모델을 추정하는 경우를 같은 Run의 실제 응답으로 대조할 수 있어 선택했다.
+- **재현 명령**: 위의 `worker-show` 세 명령을 실행하고 `projection.provider`, `worker.startOptions.launch.effective.model`, `dispatch.status`를 함께 읽는다. 새 테스트 파일이나 합성 JSON은 만들지 않았다.
+- **실제 결과**: 현재 Dispatch는 launch null이어도 projection에 `global.openai.gpt-6-astra`가 존재했다. 완료된 두 Dispatch는 projection.provider와 launch model이 모두 null이었다. 따라서 현재 모델은 projection으로 확인하고, 이전 Dispatch는 별도 실행 모델 기록 없이는 확인 완료로 처리할 수 없다는 새 문구의 두 분기를 실제 입력으로 확인했다. 1회차 Codex의 별도 기록은 검증자 자신이 당시 조회해 남긴 본 보고서이고, Coder의 모델 주장은 독립 증거로 사용하지 않았다.
+- **바뀐 파일 목록**: 시나리오 실행으로 바뀐 파일 없음. read-only Orca 조회만 수행했다.
+- **판정**: **PASS** — 새 모델 확인 순서가 실제 메타데이터의 결측을 처리하고, agent 이름이나 null launch로 모델을 임의 확정하지 않는다.
+- **미검증**: Claude Coder의 실제 모델을 별도 provider 실행 로그로 확인하는 작업과 자동 보고서 파서 구현은 범위 밖이다. 이번 수정은 문서 참조·조회 근거 변경이므로 문서 대조와 실제 Orca 응답으로 검증했으며 새 Claude 세션을 추가 실행하지 않았다(0회). T2 실제 적용·GUI 확인 창 조작도 수행하지 않았다.
+
+### 2회차 결론과 정리
+
+**PASS. 남은 반드시 고칠 것: 없음(0건).** 1회차의 design 승인 충돌은 세 승인 입력에서 해소됐으며 모델 확인 문구·push 규칙·자동 검사에도 이번 재작업으로 확인된 회귀가 없다. 1회차의 런타임 미검증 범위를 이번에 추가 통과한 것으로 확대해 보고하지 않는다.
+
+validation.md에 이 절만 추가했다. 임시 레포·파일은 만들지 않았고, 기존 guard 검사 스크립트가 만든 임시 fixture는 스크립트의 trap으로 정리됐다. 커밋·push·배포·병합·git stash 및 본체 수정은 하지 않았다.
+
+- 기록 완료: 2026-10-30 15:07:05 KST.
