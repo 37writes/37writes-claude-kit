@@ -42,3 +42,25 @@
 - harness가 107줄에서 133줄로 늘었다 (스킬 로드 비용). 표 하나와 짧은 소절로 줄였지만 더 줄일 여지는 검증자 판단에 맡긴다.
 - "실행 모델 확인"은 `launch.effective`가 null일 수 있다 (S0에서 실제로 null). 문서는 "또는 워커가 보고한 모델"을 허용하지만, 지휘 세션이 `worker-show`의 `projection.provider.model`을 보는 방법은 harness에 적지 않았다 (Orca 안내서 영역이라 판단).
 - plan 단계 번호가 5→6으로 바뀌어, 예전 스킬을 들고 있는 세션의 설명과 번호가 다를 수 있다.
+
+## 재작업 1 (S1-r)
+
+- Task / Dispatch: `task_fe2913142f69` / `ctx_d720ac131035`. 시작 HEAD `82a6121` (검증 1회차 보고서), 근거는 validation.md B-1·D-1과 지휘 세션 지적(실행 모델 확인 방법).
+- 커밋: `0f46523` fix(harness): design 적용 승인을 harness 참조로, 실행 모델 확인 순서를 실측에 맞춤 (+ 이 절 커밋)
+
+| 파일 | 변경 |
+|---|---|
+| `skills/design/SKILL.md:94` | "미리보기(로컬 캡처)를 보여 주고 승인받은 뒤에 한다" → "미리보기(로컬 캡처)를 보여 주고, 적용 승인을 언제 받을지는 /kit:harness 승인 규칙·6단계를 따른다". T2 등급(배포·배포가 되는 push)과 일반 push 프로필 문구는 그대로 (B-1) |
+| `skills/harness/SKILL.md:50` | 검토자 실행 모델 확인 순서: `worker-show --dispatch <id> --json`의 `projection.provider.model` → 워커가 보고한 실행 모델 → 둘 다 없으면 "미확인". `launch.effective.model`은 null일 수 있다고만 적음 |
+| `CLAUDE.md:49` | harness 항목에 실측 근거 한 문장 (Codex 워커 두 번 모두 `launch.effective.model` null, Claude 워커는 provider model도 null이라 자기 보고) |
+
+같은 내용을 담은 다른 문서: `grep -rn "launch.effective\|projection.provider" skills CLAUDE.md README.md scripts`는 harness 한 곳뿐이었고, design 외에 미리보기 뒤 승인 순서를 따로 적은 스킬도 없었다 (`grep -rn "T2" skills`, `grep -rn "미리보기.*승인" skills`). check:9의 "고치는 건 승인받은 뒤"는 점검 수정 승인이라 해당 없음. 버전은 0.14.0 그대로.
+
+대조 (design:94 ↔ harness 6단계): 적용까지 승인 + 로컬 캡처 미리보기 일치이면 design은 미리보기를 보여 주고 승인 시점을 harness에 맡기고, harness 6-2는 다시 묻지 않고 적용한다. 구현만 승인했거나 예상 밖 변경이면 둘 다 적용 승인을 받는다. 같은 입력에 서로 다른 지시가 더는 없다.
+
+검사 (`0f46523` 기준):
+- `claude plugin validate .` → `✔ Validation passed with warnings` (CLAUDE.md·LICENSE·icon, 기존과 같음)
+- `sh scripts/test_guard.sh` → exit 0, ok 49
+- `git diff --stat 82a6121..HEAD` (이 절 커밋 전) → CLAUDE.md, skills/design/SKILL.md, skills/harness/SKILL.md 각 1줄 (3 files, +3/−3), 담당 범위 안. guard·githooks·기획서·plan-review.md·validation.md 무변경
+
+남은 위험: design은 적용까지 승인된 경우에도 "미리보기를 보여 준다"를 남겼다 (지시대로). harness 6-1의 "요약한다"와 같은 뜻으로 읽힌다고 봤지만 새 세션 행동 확인은 하지 않았다. `worker-show` 필드 이름은 Orca 버전에 따라 바뀔 수 있다.
