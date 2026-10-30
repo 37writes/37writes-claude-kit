@@ -27,12 +27,12 @@ claude --plugin-dir ~/Documents/dev/37writes-claude-kit
 | `/kit:init` | 프로젝트당 한 번 | git init, 프로젝트 프로필(CLAUDE.md), `docs/devlog`·`docs/plans`, commit-msg 훅 |
 | `/kit:commit` | 커밋할 때 | 변경을 논리 단위로 나눠 `type(scope): 한국어 요약` 형식으로 커밋 |
 | `/kit:devlog` | 작업 단위가 끝났을 때 | `docs/devlog/YYYY-MM.md`에 정해진 형식으로 작업 로그 기록 |
-| `/kit:plan` | 새 기능을 시작할 때 | 코드를 먼저 읽고 추천값이 달린 질문으로 `docs/plans/` 기획서 작성 (등급, 단계별 담당·완료 조건) |
-| `/kit:harness` | 기능·버그·배포·권한 작업을 시작할 때 (Claude가 알아서 부름) | 위험도 T0~T2 분류 → 계획 → 워커(Orca/서브에이전트)에게 작업 지시 → 독립 검증 → T2는 승인·미리보기 → 기록·정리 |
+| `/kit:plan` | 새 기능을 시작할 때 | 코드를 먼저 읽고 추천값이 달린 질문으로 `docs/plans/` 기획서 작성 (등급, 단계별 담당·완료 조건). 불확실하거나 영향이 큰 기획은 다른 모델이 반박한 뒤 승인, 구현까지 맡기면 다시 묻지 않음 |
+| `/kit:harness` | 기능·버그·배포·권한 작업을 시작할 때 (Claude가 알아서 부름) | 위험도 T0~T2 분류, 배치는 불확실성·분리 가능성으로 → 계획(필요하면 다른 모델 반박) → 워커(Orca/서브에이전트)에게 작업 지시 → 독립 검증(검증자가 고른 실패 시나리오 포함) → T2는 승인·미리보기 → 기록·정리 |
 | `/kit:til` | 개발 중 새 개념을 알았을 때 | `~/Documents/dev/my-notes/til/`에 개념 메모 저장 (블로그 원료) |
 | `/kit:blog` | "이 내용 블로그로 쓰자" 같은 말이나 직접 호출 | 대화나 TIL 메모를 블로그 글(시리즈 가능)로. 출발 세션은 브리프만 써서 tech-blog의 "블로그 코디네이터" 탭에 넘기고, 코디네이터가 글마다 worktree와 글 워커를 띄워 지휘한다(도표 SVG, 다른 모델 검수, 회사 정보 필터링). 코디네이터가 검수하고 승인받으면 main에 병합해 37writes.github.io에 발행 |
 | `/kit:design` | 화면을 만들거나 고칠 때 (Claude가 알아서 부름) | 캡처 → AI·템플릿 티 체크리스트 진단 → 방향 2~3개 중 선택 → 색·글꼴 토큰(대비 계산) → 테마 덮어쓰기 적용 → 전/후 캡처 비교 |
-| `/kit:check` | 머지·배포 전 | 프로필의 빌드·테스트 실행 + 언어별 체크리스트 리뷰, 보고 후 승인된 것만 수정 |
+| `/kit:check` | 머지·배포 전 | 프로필의 빌드·테스트 실행 + 언어별 체크리스트 리뷰, 보고 후 승인된 것만 수정 (harness 검증 단계에서는 지휘 세션에 보고) |
 | `/kit:release` | 배포할 때 | 버전·릴리즈 노트·CHANGELOG, Amplify 배포 확인 / exe 묶음·체크섬 / 앱(첫 배포 때 확정) |
 | `/kit:weekly` | 주 1회 | 모든 kit 프로젝트의 devlog·커밋·TIL·블로그를 모아 주간 정리 (my-notes/weekly) |
 | `/kit:feedback` | 다른 프로젝트에서 kit 개선 아이디어가 떠올랐을 때 | 대화 맥락을 붙여 이 저장소에 GitHub 이슈(feedback 라벨)로 등록, 하던 작업으로 복귀 |
@@ -78,4 +78,5 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 - [x] design (AI 티 안 나는 화면, tech-blog 종이 노트로 시범)
 - [x] blog를 글마다 worktree로 (말로 시작, 승인 뒤 main 병합), guard에 ampx·deploy.sh 확인
 - [x] push가 배포가 아닌 레포는 커밋 승인만으로 push (guard가 프로필의 push 줄을 읽음)
+- [x] 기획은 다른 모델이 반박, 배치는 불확실성·분리 가능성으로, 승인 규칙 정리, 검증자가 고른 실패 시나리오
 - [x] blog 코디네이터 (tech-blog 본체 탭이 글 워커를 띄우고 검수·병합·정리)
