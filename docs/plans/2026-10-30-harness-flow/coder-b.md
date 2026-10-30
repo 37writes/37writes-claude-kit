@@ -76,3 +76,50 @@ $ git diff HEAD | grep "^+" | grep "/Users/"
 - README의 훅 표·패널 설명(진행 중 기획서, Stop 훅 없음)은 S1a의 hooks.json·panel.tsx 변경이 합쳐져야 맞다.
 - harness·init·plan의 실제 동작(경로 Read 계약, init 보완, project.md)은 비대화 실행으로 확인하지 않았다 (검증 단계의 몫).
 - push·배포·커밋 외 원격 작업은 하지 않았다.
+
+## 재작업 (S1b-r)
+
+- Task: task_ec5318307c98 / Dispatch: ctx_f8fdad589746. 근거: `validation.md`의 C b+d, C c-3, B, F3·F4·F5와 검증 중 사용자 결정(my-notes·등록부 삭제). 실행 모델 Claude Opus 5.5 (`global.anthropic.claude-opus-5-5`).
+- 시작 HEAD `1d47d0f` (Coder A 코드 포함). scripts/·hooks/·types/·기획서 본문은 건드리지 않았다.
+
+### 변경
+
+| 항목 | 파일 | 변경 |
+|---|---|---|
+| F3 마무리 순서 | harness "완료 판정과 기록"·7 마무리, plan 6단계·프로젝트 설계, commit Refs·마지막 줄, release 4, README "기록", CLAUDE.md 기록 결정 | 단계마다 그 커밋에 체크박스·결과 → 마지막 작업 커밋에 `status: done`(`abandoned` + 이유)·마지막 결과·`## 남은 일` → 바로 이어 삭제 커밋 `docs(plan): <slug> 완료, 기획서 삭제`(본문 Refs + 결과 한 줄 + 사용자만 할 남은 확인). 작은 작업도 같은 두 커밋 순서. "따로 정리 커밋을 만들지 않는다" 삭제. Refs는 기획 커밋부터 모든 커밋에 필수 (commit의 "Refs (선택)" → "기획서가 있는 작업이면 필수", plan 6.2 기획 커밋에도 Refs). `git show <삭제 커밋>^:`이 done 상태를 보인다고 명시. project.md의 `완료 <커밋>`은 삭제 커밋. CLAUDE.md에 이유(S2 검증 F3, 2026-10-30) |
+| F4 정의 한 곳 | harness "push와 배포", release:11·74, README 36·72·79·82, CLAUDE.md 50·54, init 49·67·76 | 태그 push·릴리즈 생성·파일 전달은 매번 확인 → harness "정책이 다루지 않는 것"으로 옮김. release는 "배포 승인/확인을 받고 = harness가 정한 승인" 참조만. README는 "줄이 없으면 매번 승인", "정책을 처음 넣거나 바꾸는 push … 승인" 등을 "승인 조건은 harness 'push와 배포'"로, guard 조건은 "guard가 대조하는 것"(동작 설명)으로. CLAUDE.md 50·54는 배경·이유만 두고 "규칙 본문은 harness". init의 "(=배포마다 승인)", "(없으면 배포는 매번 승인)", push 템플릿 "(승인한 커밋은 바로 push)" → 참조 또는 사실("push해도 배포되지 않음")로 |
+| F5 이어서 | harness 8, README 32 | 기본은 `plans.py`(기계용 `--json`)의 활성 목록만 보고, 끝난·지운 기획서는 읽거나 보고하지 않음. `--all`(5개 제한 없이 + 끝난 작업의 오래된 복사본 진단)은 사용자가 묻거나 충돌·"상태 확인 필요"를 풀 때만 |
+| my-notes·등록부 삭제 | CLAUDE.md 44·48·53·my-notes 행, README 109·110, blog:10·37·47·54·297 | "그대로 둔다" → "2026-10-30 사용자 결정으로 삭제". 기록 결정의 보존 목록은 `docs/devlog/`, `.git/37writes-kit-reminded`만. my-notes 행은 "삭제됨 (2026-10-30, 사용자 결정)" 한 줄(공개 금지 사유 제거). blog의 TIL 메모 행·본문은 my-notes 경로 없이 "사용자가 지정한 메모 파일만 읽는다" |
+| deploy_gate 동작 | harness 조건 4, release verify 주석, README 순서, CLAUDE.md 구조·자동 배포 결정 | "그 SHA의 깨끗한 임시 checkout에서 실행, 검증 명령이 추적 파일을 바꾸면 실패". CLAUDE.md에 이유(S2 F1·F2). "제자리"·"HEAD == SHA" 표현은 원래 없었다 |
+
+### 실행한 명령과 결과
+
+```text
+$ claude plugin validate .
+✔ Validation passed with warnings          (ICON_MISSING만)
+
+$ wc -l skills/harness/SKILL.md
+149                                          (≤ 170)
+
+$ grep -rn "따로 정리 커밋" skills README.md CLAUDE.md
+(0건)
+
+$ grep -rn "my-notes\|repos.txt" skills README.md CLAUDE.md
+README.md:109   없앤 기능 표: my-notes 저장소는 삭제 (2026-10-30, 사용자 결정)
+README.md:110   없앤 기능 표: 등록부 repos.txt와 my-notes는 삭제 (2026-10-30, 사용자 결정)
+CLAUDE.md:44    등록부 결정: 쓰기 중단 이유 + "파일도 2026-10-30 사용자 결정으로 삭제"
+CLAUDE.md:65    관련 저장소: my-notes 삭제됨 (2026-10-30, 사용자 결정)
+→ 삭제 사실 기록뿐
+
+$ git diff | grep "^+" | grep -c "/Users/"
+0
+```
+
+**승인 정의 직접 확인**: `grep -rnE "승인|확인을 받|묻는다|묻지 않|겸한다|매번" skills README.md CLAUDE.md | grep -v ^skills/harness/` 결과를 한 줄씩 읽었다. 남은 것은 (1) harness 참조 문장(commit:50, design:94, plan:14·153, check:10, release:11, init:13·49·76, README:36·72·79, CLAUDE.md:18·50·54), (2) 절차 안에서 "승인을 받는다/확인을 받고"처럼 harness가 정한 승인을 쓰는 단계(release:20·21·56·72·74·83, plan:155), (3) 사용자 질문 방법(init:12·34·43, design:55·83, plan:13·59·78), (4) guard 동작 설명(init:75 "훅은 `배포 아님`일 때만 일반 push를 묻지 않는다", README 훅 표), (5) 과거 기록(README 로드맵 130~132), (6) blog 발행 승인(blog:16·164 등, README:37·53). (6)은 blog 고유 절차이고 harness 의도 표에도 "발행은 글마다 승인"이 있다. check:9·81 "보고 먼저, 수정은 승인 뒤"는 harness "점검 요청"과 같은 내용을 check 절차가 실행 단계로 쓰는 것이다. 승인 여부를 harness와 다르게 또는 harness 없이 새로 정하는 문장은 찾지 못했다.
+
+### 남은 위험
+
+- 삭제 커밋을 따로 두는 순서가 실제 새 세션에서 지켜지는지(특히 커밋 하나짜리 작은 작업)는 재검증(C b+d 재실행)에서 확인해야 한다.
+- harness 8의 `--all` 제한이 런타임에서 지켜지는지(C c-3 재실행)는 미검증.
+- (6)·check:9를 "정의"로 볼지는 검증자 판단 여지가 있다. 그렇게 보면 blog K6·check 머리말도 참조로 줄여야 한다.
+- deploy_gate의 임시 checkout 동작 설명은 지휘 세션이 전한 Coder A의 변경 내용을 따랐다. 이 worktree의 scripts/는 아직 그 변경 전일 수 있다.
