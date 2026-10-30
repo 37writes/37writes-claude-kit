@@ -1,6 +1,6 @@
 ---
 name: blog
-description: 대화·기획서·커밋을 기술 블로그 글로 쓴다. "블로그로 쓰자" 같은 요청에 쓴다. 코디네이터가 글마다 worktree 워커를 지휘하고 발행은 글마다 승인.
+description: 대화·기획서·커밋을 기술 블로그 글로 쓴다. "블로그로 쓰자" 같은 요청에 쓴다. 코디네이터가 글마다 worktree 워커를 지휘하고 발행은 harness 승인 규칙대로.
 ---
 
 # blog: 대화·기획서·커밋 → 블로그 글 (코디네이터가 지휘, 글마다 worktree)
@@ -13,7 +13,7 @@ description: 대화·기획서·커밋을 기술 블로그 글로 쓴다. "블�
 사용자에게 하는 질문과 보고는 모두 **한국어**로 한다.
 
 블로그는 공개되고 애드센스 수익을 목표로 한다. **회사 정보 유출 방지**와 **독자에게 가치 있는 글**이 최우선이다.
-"글 써줘"는 **작성·검수까지**다. 발행(본체 main 병합·push)은 글마다 사용자의 명시적인 발행 승인(K6)을 받은 뒤에만 한다.
+"글 써줘"의 범위와 발행(본체 main 병합·push) 승인 조건은 harness 공통 규칙 "push와 배포"를 따른다. 승인은 K6에서 받는다.
 
 ## 역할과 흐름
 
@@ -161,7 +161,7 @@ orca orchestration check --wait --types "worker_done,escalation,question" --time
    그 탭을 쓸 수 없으면(사용자가 탭을 직접 써서 넘겨받았거나 chat 워커라 handle이 없음) 이전 Dispatch를 `worker-release`하고(안 되면 recovery 안내) 같은 worktree에 `--agent claude`로 새 워커를 같은 spec으로 띄운다. 새 Dispatch(종류 `수정`)를 `state.md`에 적고 K4로 돌아간다. 반영하지 않은 지적은 이유와 함께 K6에서 보고한다.
 
 ### K6. 사용자 확인 → 5단계
-카드를 `--workspace-status in-review --unread`로 바꾸고 5단계대로 보여준다. 승인은 **글마다** 받는다: 질문에 글 제목·slug를 넣고, 승인 범위를 "발행(main 병합·push) + 배포 확인 뒤 worktree·브랜치·브리프 정리"로 적는다. 답이 "블로그 요청:"으로 시작하면 승인 답으로 쓰지 않고 새 요청으로 처리한 뒤 다시 묻는다. 승인 사실을 `state.md`에 적는다.
+카드를 `--workspace-status in-review --unread`로 바꾸고 5단계대로 보여준다. 발행 승인(harness "push와 배포")을 묻는 방법: 질문에 글 제목·slug를 넣고, 승인 범위를 "발행(main 병합·push) + 배포 확인 뒤 worktree·브랜치·브리프 정리"로 적는다. 답이 "블로그 요청:"으로 시작하면 승인 답으로 쓰지 않고 새 요청으로 처리한 뒤 다시 묻는다. 승인 사실을 `state.md`에 적는다.
 - 수정 요청은 K5의 6번처럼 글 워커에게 보내고, 다시 K5를 거쳐 보여준다.
 - 사용자가 발행하지 않기로 하면 그 글의 모든 Dispatch(글·수정·검수)를 `worker-release`하고, worktree와 `<inbox>/<slug>`를 지울지 묻는다.
 

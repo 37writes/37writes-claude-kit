@@ -22,7 +22,7 @@ Orca 작업 지시(Task·Dispatch ID)를 받은 워커는 이 절차를 다시 �
 | 화면 ("화면 만들어줘", "디자인 고쳐줘") | design 절차 + 공통 규칙 | `<base directory>/../design/SKILL.md` |
 | 점검 ("점검해줘", "리뷰해줘") | 보고 먼저, 수정은 승인 뒤 | `<base directory>/../check/SKILL.md` |
 | 배포 ("배포해줘", "릴리즈") | 공통 규칙 "push와 배포" → release 절차 | `<base directory>/../release/SKILL.md` |
-| 블로그 ("블로그로 쓰자") | 작성·검수까지. 발행은 글마다 승인 | `<base directory>/../blog/SKILL.md` |
+| 블로그 ("블로그로 쓰자") | 작성·검수까지. 발행 승인은 공통 규칙 "push와 배포" | `<base directory>/../blog/SKILL.md` |
 | kit 개선 (다른 레포에서 "kit 이거 고치고 싶다") | 이슈만 남기고 하던 일로 | `<base directory>/../feedback/SKILL.md` |
 
 - 질문인지 작업인지 애매하면 읽기 전용 확인(코드·설정 읽기)부터 하고, 바꾸기 전에 묻는다.
@@ -61,6 +61,7 @@ Orca 작업 지시(Task·Dispatch ID)를 받은 워커는 이 절차를 다시 �
 ### push와 배포
 - **일반 push**: 프로필 push 줄이 `배포 아님`이면 커밋 요청·승인이 push 승인을 겸한다. 줄이 없거나 `배포`면 push는 배포로 본다 (T2, 또는 아래 자동 배포). 강제·삭제 push는 항상 따로 확인한다.
 - **정책이 다루지 않는 것**: 태그 push, 릴리즈 생성(`gh release create`), 파일 전달은 push 줄·자동 배포 정책과 상관없이 매번 직접 확인한다.
+- **블로그 발행**(tech-blog main 병합·push): 자동 배포 정책에 넣지 않고 **글마다** 명시 승인을 받는다. "글 써줘"는 작성·검수까지이고 발행 승인이 아니다. 승인을 묻는 방법은 blog K6.
 - **자동 배포**: 프로필에 정책 줄이 있고 이번 변경이 정책 안이면 **계획 승인이 배포 승인을 겸한다**. 줄 형식은 init, 명령은 release. 조건 (guard가 push 때 같은 것을 대조한다):
   1. push가 정확히 `git push <원격> <40자리 SHA>:refs/heads/<브랜치>` 하나이고 원격·브랜치가 정책 `대상`과 같다 (`main` 같은 움직이는 이름은 묻는다)
   2. push URL과 fetch URL이 같고, `ls-remote`로 읽은 원격 base에서 그 SHA로 fast-forward다
