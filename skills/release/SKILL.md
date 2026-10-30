@@ -1,13 +1,25 @@
 ---
 name: release
-description: 프로필의 배포 방식(Amplify / 실행파일 전달 / 앱)에 맞춰 버전, 릴리즈 노트, 빌드, 배포 확인까지 진행한다. 단계마다 확인을 받는다.
+description: 프로필의 배포 방식(Amplify / 실행파일 전달 / 앱)에 맞춰 버전, 릴리즈 노트, 빌드, 배포와 SHA 기준 배포 확인까지 진행한다.
 disable-model-invocation: true
 ---
 
 # release: 배포
 
 사용자에게 하는 질문과 보고는 모두 **한국어**로 한다.
-배포는 되돌리기 어렵다. **push, 태그 push, 릴리즈 생성, 파일 전달 직전에는 반드시 확인**을 받는다.
+harness가 이 파일을 경로로 읽었으면 그 요청을 인자로 보고, 이 파일이 있는 폴더를 base directory로 쓴다. 아래 `<scripts>` = `<base directory>/../../scripts`.
+배포는 되돌리기 어렵다. 승인·자동 배포·완료 판정은 harness 공통 규칙("승인", "push와 배포", "완료 판정과 기록")을 따른다. 아래에서 **"배포 승인"**이라고 쓴 곳은: 프로필 자동 배포 정책 안이면 계획 승인으로 이미 받은 것이고, 아니면 그 자리에서 명시적으로 받는다. 태그 push, 릴리즈 생성, 파일 전달처럼 정책이 다루지 않는 것은 늘 직접 확인을 받는다.
+
+**배포 push** (브랜치 push가 배포일 때, 모든 방식 공통):
+- 자동 배포 정책이 있으면 정확히 이 순서로 한다 (`<SHA>`는 `git rev-parse HEAD`의 40자리 전체, 병합 등으로 바뀌면 1부터 다시):
+  ```sh
+  sh <scripts>/py.sh <scripts>/deploy_gate.py verify --sha <SHA>          # 정책의 검증 명령을 그 SHA의 깨끗한 checkout에서 실행·기록
+  git push <원격> <SHA>:refs/heads/<브랜치>                                 # 정책 대상과 같은 원격·브랜치, 옵션 없이
+  sh <scripts>/py.sh <scripts>/deploy_gate.py confirm --sha <SHA>         # 정책의 확인 명령, exit 0일 때만 배포 완료
+  ```
+  `verify`가 실패하면 push하지 않고 멈춘다. guard가 확인 창을 띄우면 정책 밖이라는 뜻이니 우회하지 않고 이유를 보고한 뒤 배포 승인을 받는다.
+- 정책이 없으면 배포 승인을 받은 뒤 push한다.
+- `confirm`이 실패하거나 시간 초과면 멈추고, 반영된 SHA·실행 id·롤백 방법을 보고한다. 자동으로 되돌리지 않는다.
 
 ## 1. 사전 점검 (모든 배포 방식 공통)
 
@@ -41,11 +53,12 @@ disable-model-invocation: true
 ### A. AWS Amplify (브랜치 push = 배포)
 1. 프로필에 Amplify **앱 ID**, **배포 브랜치**가 없으면 확인해서 기록한다:
    `aws amplify list-apps --query "apps[].[name,appId,defaultDomain]" --output table` (프로필의 AWS 프로필/리전 사용)
-2. **확인 후** `git push origin <배포 브랜치> --follow-tags`
-3. 빌드 진행 확인: `aws amplify list-jobs --app-id <앱ID> --branch-name <브랜치> --max-items 1`
-   상태가 `SUCCEED`/`FAILED`가 될 때까지 30초 간격으로 확인한다 (보통 수 분).
+2. 배포 승인 뒤 위 "배포 push"대로 push한다. 태그는 따로 확인을 받고 `git push <원격> vX.Y.Z`.
+3. 빌드 확인은 **push한 SHA에 묶인 job**으로 한다 (`--max-items 1`의 최근 job은 이전 커밋일 수 있다):
+   `aws amplify list-jobs --app-id <앱ID> --branch-name <브랜치> --query "jobSummaries[?commitId=='<SHA>']"`
+   그 job의 상태가 `SUCCEED`/`FAILED`가 될 때까지 30초 간격으로 확인한다 (보통 수 분). 자동 배포 정책의 `확인` 명령도 이 형태로 쓴다.
 4. 실패하면 `aws amplify get-job ...`의 로그 URL을 알려주고 원인을 같이 본다.
-5. 성공하면 사이트 주소로 접속 확인 (`curl -sI <주소>` 200 확인).
+5. 성공하면 배포 주소에서 **핵심 기능 결과**를 확인한다 (계획의 완료 조건, 예: 로그인 뒤 보고서 1건 생성). HTTP 200만으로 완료라고 하지 않는다. 사용자만 할 수 있는 확인은 기획서 `## 남은 일`로.
 
 ### B. 실행파일 전달 (C# exe 등)
 1. 빌드 (프로젝트에 맞게, 처음이면 옵션을 사용자와 정해 프로필에 기록):
@@ -56,9 +69,9 @@ disable-model-invocation: true
    - 개발용 설정, 비밀값, 디버그 파일(`*.pdb`)은 넣지 않는다
 3. SHA-256 체크섬을 함께 남긴다 (`shasum -a 256` / PowerShell `Get-FileHash`).
 4. `release/`는 `.gitignore`에 있어야 한다 (없으면 추가).
-5. 원격이 GitHub이고 사용자가 원하면 **확인 후** `gh release create vX.Y.Z <zip> --notes-file <노트>`.
+5. 원격이 GitHub이고 사용자가 원하면 확인을 받고 `gh release create vX.Y.Z <zip> --notes-file <노트>`.
    회사 프로젝트는 전달 경로(메일, 사내 공유 폴더 등)를 사용자에게 맡기고, 전달할 파일과 안내 문구만 준비한다.
-6. **확인 후** `git push origin <브랜치> --follow-tags`
+6. 확인을 받고 `git push origin <브랜치> --follow-tags` (push 줄이 `배포 아님`이어도 태그 push는 따로 확인한다).
 
 ### C. 앱 (iOS / Android)
 아직 첫 배포 전이다. 처음 진행할 때 사용자와 함께 절차를 확정하고 이 섹션을 갱신한다.
@@ -67,10 +80,9 @@ disable-model-invocation: true
 - 서명 인증서, 키스토어, 비밀번호는 절대 저장소에 넣지 않는다
 
 ### D. 그 외 (라이브러리, ROS2 패키지, 배포 없음)
-태그와 릴리즈 노트까지만 하고, **확인 후** `git push origin <브랜치> --follow-tags`.
+태그와 릴리즈 노트까지만 하고, 확인을 받고 `git push origin <브랜치> --follow-tags`.
 
 ## 4. 마무리
 
-- 진행 중이던 기획서가 이번 릴리즈로 끝났다면 `status: done`
-- /kit:devlog 로 배포 내용을 기록한다 (버전, 배포 방식, 결과, 문제가 있었다면 해결 과정)
-- 최종 보고: 버전, 배포 결과(주소나 파일 경로), 체크섬, 남은 할 일
+- 진행 중이던 기획서가 이번 릴리즈로 끝났다면 결과(버전, 배포한 SHA, 확인 결과)를 적고 harness 공통 규칙대로 마지막 커밋에서 지운다. 기록은 릴리즈 노트·CHANGELOG·커밋이다.
+- 최종 보고: 버전, 배포한 SHA, 배포 결과(주소나 파일 경로, 확인한 핵심 기능), 체크섬, 남은 할 일

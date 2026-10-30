@@ -11,10 +11,10 @@ description: 다른 프로젝트에서 작업하다 떠오른 37writes kit 개�
 
 ## 1. 내용 정리
 
-인자(`/kit:feedback devlog에 소요 시간도 기록하고 싶어`)와 **방금까지의 대화**에서 정리한다.
+인자(`/kit:feedback 기획서에 소요 시간도 적고 싶어`)와 **방금까지의 대화**에서 정리한다.
 
-- **제목**: 무엇을 바꾸고 싶은지 한 줄. 앞에 대상 스킬이나 훅을 붙인다. 예) `[devlog] 소요 시간 항목 추가`, `[hook] git push 확인에서 태그 push 제외`
-  - 대상: init, commit, devlog, plan, til, blog, check, release, weekly, feedback, hook, 새 스킬, 기타
+- **제목**: 무엇을 바꾸고 싶은지 한 줄. 앞에 대상 스킬이나 훅을 붙인다. 예) `[plan] 기획서에 소요 시간 항목 추가`, `[hook] git push 확인에서 태그 push 제외`
+  - 대상: harness, init, commit, plan, design, blog, check, release, feedback, hook, 패널, 새 스킬, 기타
 - **본문**:
 
 ```markdown
@@ -55,7 +55,7 @@ BODY
 ## 4. 보고 (한 줄)
 
 ```text
-💡 kit 이슈 #12 등록 — [devlog] 소요 시간 항목 추가 (kit 세션에서 처리)
+💡 kit 이슈 #12 등록 — [plan] 기획서에 소요 시간 항목 추가 (kit 세션에서 처리)
 ```
 
 그리고 하던 작업으로 바로 돌아간다. 이 세션에서 kit 파일을 직접 고치지 않는다.
