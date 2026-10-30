@@ -352,3 +352,52 @@ git -c user.name=Validator -c user.email=validator@example.invalid commit --allo
 - LICENSE_MISSING은 별도 디렉터리 제출 시 해결해야 한다.
 - 실제 배포·원격 서비스·Windows·기존 보고서 폴더까지 포함한 자동 삭제는 이번 재검증 범위에서 실행하지 않았다. 모든 배포 검사는 로컬 fixture다.
 - 처음 요청된 1~8을 모두 수행했고, 새 세션은 2회 사용했다. 이 worktree에서는 이 절만 추가했으며 HEAD를 바꾸거나 소스를 수정하지 않았다.
+
+## 3회차 재검증
+
+검증자 agent: Codex (독립 검증자 S2-r3)
+실제 모델: `global.openai.gpt-6-astra` — 실행 중 `orca orchestration worker-show --dispatch ctx_ab412530561d --json`의 `projection.provider.model`로 확인
+시각: 2026-10-30 23:34 KST
+Task ID: `task_836e204d4ca6` / Dispatch ID: `ctx_ab412530561d`
+대상: `fe7aa4c..a368420a41677fd2bbb510db3e04025e85d7fc81`. 이 절의 `<tmp>`는 `/tmp/kit-s2-r3`이다. 이전 보고서 본문은 그대로 보존했다.
+
+### 1. F4 잔여 승인 정의 — PASS
+
+실행: `git diff fe7aa4c..HEAD`, `rg -n '승인|묻지|매번|확인을 받' skills README.md CLAUDE.md`. 검색 결과만 세지 않고 harness·blog·release 및 나머지 스킬의 해당 문단과 README·CLAUDE의 문맥을 직접 읽었다 (`<tmp>/approval-lines.log`).
+
+- `skills/harness/SKILL.md:64`의 새 **블로그 발행** 규칙이 tech-blog main 병합·push, 자동 배포 정책 제외, **글마다 명시 승인**, **“글 써줘”는 작성·검수까지이며 발행 승인이 아님**을 모두 규정한다. 승인 질문 방법은 blog K6로 위임한다. 2회차에서 요구한 승인 여부의 정의가 공통 규칙으로 옮겨졌다.
+- `skills/blog/SKILL.md:3`·`:16`은 harness 승인 규칙을 참조한다. `:164`는 그 승인을 **어떻게 묻고 기록하는지** 설명한다. 제목·slug·승인 범위·state.md 기록은 상세 절차이며 별도 승인 조건 정의가 아니다.
+- `README.md:37`은 발행 승인 조건을 harness에 맡긴다. `CLAUDE.md:53` 마지막 문장도 F4 수정 이유와 규칙 위치를 설명하는 참조로 바뀌었다.
+- blog의 K7·5~6단계에 남은 “승인된 글만 실행”, “승인 뒤 발행”은 :16의 규칙 참조 아래 실행 순서를 설명한다. 새 승인 예외나 다른 허용 범위를 정하지 않는다. release:11·commit:50·plan:14·design:94도 같은 방식으로 harness를 참조한다. check·init의 승인 관련 문장은 해당 점검·설정 절차이며 이번에 지적한 블로그 발행 조건을 별도로 소유하지 않는다.
+- **2회차 F4로 지적한 독립 승인 정의 잔여 없음.** 문장에 “승인”이라는 단어가 남았다는 이유만으로 절차·참조·이력 설명을 결함으로 세지 않았다.
+
+### 2. 등록부 결정 문장 — PASS
+
+실행: `sed -n '98,109p' docs/plans/2026-10-30-harness-flow.md` 및 해당 파일의 diff 확인.
+
+- `docs/plans/2026-10-30-harness-flow.md:104`는 처음의 파일 보존 결정을 **폐기**했다고 명시한다.
+- `:106`의 최신 사용자 결정(my-notes 및 등록부 파일 삭제, docs/devlog는 대상 아님)과 모순되지 않는다.
+- 폐기 이력에 “보존”이라는 단어는 남지만 현재 유효한 보존 지시가 아니다. **2회차 사용자 결정 반영 누락 해결.**
+
+### 3. 재실행·줄 수·범위 — PASS
+
+Python subprocess의 `/bin/sh`로 명령을 실행해 zsh alias를 적용하지 않았다. 스크립트 테스트는 `HOME=<tmp>/home`, `TMPDIR=<tmp>`, `PYTHONDONTWRITEBYTECODE=1`로 격리했다.
+
+| 실제 실행 명령 | 결과 |
+|---|---|
+| `claude plugin validate .` | exit 0, Validation passed with warnings |
+| `sh scripts/test_guard.sh` | exit 0, **58 ok / 0 FAIL** |
+| `sh scripts/test_deploy_gate.sh` | exit 0, **56 ok / 0 FAIL** |
+| `sh scripts/test_plans.sh` | exit 0, **32 ok / 0 FAIL** |
+
+합계 **146건 통과**. 로그는 `<tmp>/validate.log`, `guard.log`, `deploy.log`, `plans.log`, 집계는 `checks.json`에 있다. validate의 루트 CLAUDE 경고·별도 디렉터리 제출 기준 LICENSE_MISSING·ICON_MISSING은 이전과 동일하며 이번 두 문서 수정의 회귀는 아니다.
+
+- harness를 직접 읽어 줄 수를 계산: **150줄**, 170줄 제한 통과.
+- `git diff --stat fe7aa4c..HEAD`: **5 files, 8 insertions, 7 deletions**. CLAUDE.md·README.md·blog·harness의 블로그 승인 참조 정리와 기획서 등록부 결정 한 줄뿐이다. **지정된 두 건 범위 안**, scripts·hooks·manifest 변경 없음.
+- 새 Claude 런타임 세션은 실행하지 않았다. plugin test는 이번 지시에 없고 패널 변경도 없어 재실행하지 않았다(2회차의 6건 통과 결과를 이번 합계에 더하지 않았다).
+
+### 4. 결론 — PASS
+
+**2회차 필수 수정 2건 모두 해결, 남은 필수 수정 0건.** 이번 검사한 HEAD의 해당 문서 수정과 지정된 자동 검증은 PASS다.
+
+2회차에서 관찰한 실 HOME 등록부 재생성의 작성 프로세스, 본체 반영 후 재발 여부, 실제 서비스 배포·Windows 등 기존 범위 밖 항목은 이번에 다시 검사하지 않았다. 이를 이번 PASS로 해결됐다고 주장하지 않는다. 사용자 파일을 삭제하거나 소스를 고치지 않았고, 이 보고서에 본 절만 추가했다.

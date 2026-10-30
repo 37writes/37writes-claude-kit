@@ -1,7 +1,7 @@
 ---
 title: 자연어 요청부터 완료까지 harness 중심 흐름, devlog·til·weekly 제거, 정책 기반 자동 배포
 date: 2026-10-30
-status: in-progress
+status: done
 tier: T2
 ---
 
@@ -137,8 +137,24 @@ tier: T2
   - 결과: `ef3b58e` (Task `task_5087e3593fb0` / Dispatch `ctx_d657713ebda9`, [coder-b.md](2026-10-30-harness-flow/coder-b.md)). 스킬 9개, harness 144줄, 끝난 기획서 7개 삭제
 - [x] S1c. 병합 — 지휘 세션 — 두 하위 브랜치를 작업 브랜치로 병합, 통합 검사 재실행
   - 결과: `20badd5`(A, fast-forward) + `ef3b58e`(B) → 병합 `ea26107`. validate 통과, guard 58·deploy_gate 40·plans 32 ok, plugin test 6 pass
-- [ ] S2. 독립 검증 — Codex Validator(탭) — 재실행 + 이 worktree를 `--plugin-dir`로 로드한 새 Claude 세션에서 시나리오 a~f를 실제 도구 호출·산출물로 확인 (아래 완료 기준), 스스로 고른 실패 시나리오, `validation.md`
-- [ ] S3. 반영과 통합 — 지휘 세션 — 지적 수정·재검증, 기획서 결과·남은 일, main fast-forward 병합, `git push origin main`, 본체가 그 SHA인지 확인
+- [x] S2. 독립 검증 — Codex Validator(탭) — 재실행 + 이 worktree를 `--plugin-dir`로 로드한 새 Claude 세션에서 시나리오 a~f를 실제 도구 호출·산출물로 확인 (아래 완료 기준), 스스로 고른 실패 시나리오, `validation.md`
+  - 결과: 1회차 FAIL 5건(F1 검증 명령이 파일을 고쳐도 성공, F2 confirm이 커밋 안 된 스크립트 실행, F3 갱신·삭제 한 커밋, F4 승인 정의 중복, F5 재개가 `--all`로 끝난 작업 노출) → 같은 Coder 탭 재작업 `7d8fa7b`·`e22f2d0`(병합 `378413b`) → 2회차 코드·런타임 통과, 문서 2건 → 지휘 세션 수정 `a368420` → 3회차 PASS. [validation.md](2026-10-30-harness-flow/validation.md)
+- [x] S3. 반영과 통합 — 지휘 세션 — 지적 수정·재검증, 기획서 결과·남은 일, main fast-forward 병합, `git push origin main`, 본체가 그 SHA인지 확인
+  - 결과: 최종 검사 validate 통과, guard 58·deploy_gate 56·plans 32 ok, plugin test 6 pass, harness 150줄. main fast-forward·push·본체 `pull --ff-only`는 이 기획서의 삭제 커밋 SHA로 이어서 한다 (결과는 삭제 커밋 본문·최종 보고)
+
+## Run 실행 기록
+Run `run_52995850c8c4`, 지휘 세션 Claude Opus 5.5 (`global.anthropic.claude-opus-5-5`). 모델은 실행 중 `worker-show`의 `projection.provider.model`(Codex) 또는 워커 자기 보고(Claude, Orca 값 null)로 확인.
+
+| 단계 | 워커 | Task / Dispatch | 모델 | 결과 |
+|---|---|---|---|---|
+| S0 반박 | Codex 탭 | `task_be43c2502629` / `ctx_8c149f4df4bb` | `global.openai.gpt-6-astra` | 반례 3 수용, 1 기각 |
+| S1a 코드 | Claude Coder A (하위 worktree) | `task_477f2386913f` / `ctx_82193551f4ef` | `global.anthropic.claude-opus-5-5` | `20badd5` |
+| S1b 문서 | Claude Coder B (하위 worktree) | `task_5087e3593fb0` / `ctx_d657713ebda9` | `global.anthropic.claude-opus-5-5` | `ef3b58e` |
+| S2 검증 1회차 | Codex Validator 탭 | `task_c103c122d2c6` / `ctx_88c5c0e9b288` | `global.openai.gpt-6-astra` | FAIL 5건 |
+| S1a-r 재작업 | Coder A 탭 | `task_ee871403cc04` / `ctx_614218573aa1` | `global.anthropic.claude-opus-5-5` | `7d8fa7b` |
+| S1b-r 재작업 | Coder B 탭 | `task_ec5318307c98` / `ctx_f8fdad589746` | `global.anthropic.claude-opus-5-5` | `e22f2d0` |
+| S2 검증 2회차 | Codex Validator 탭 | `task_5c37386c9adc` / `ctx_d1122cd7abd5` | `global.openai.gpt-6-astra` | 문서 2건 |
+| S2 검증 3회차 | Codex Validator 탭 | `task_836e204d4ca6` / `ctx_ab412530561d` | `global.openai.gpt-6-astra` | PASS |
 
 ## 완료 기준
 - a) 질문("Python GIL이 뭐야?")에 파일·기획서·커밋이 생기지 않는다.
@@ -150,4 +166,8 @@ tier: T2
 - `claude plugin validate .`, `claude plugin test .` 통과, 두 manifest 0.15.0, README가 자연어 사용법 기준.
 
 ## 남은 일
-- (작업 중 채움)
+- 사용자: GitHub 비공개 저장소 `37writes/my-notes` 삭제 (`gh repo delete 37writes/my-notes --yes`, 사용자가 직접)
+- 사용자: 검증 중 다시 생긴 `~/.config/37writes-kit/repos.txt` 정리 여부 (2회차 23:29에 생김, 새 코드에는 쓰기 경로 없음. 본체가 구버전이던 때의 SessionStart로 추정, 작성 프로세스 미확인). 본체 반영 뒤 재발하지 않는지 확인
+- 다른 컴퓨터: `/plugin marketplace update 37writes` → `/plugin update kit@37writes`
+- 하위 worktree `harness-flow-a`·`harness-flow-b`와 이 작업 worktree 정리 (사용자 확인 후 Orca에서)
+- 런타임 미검증: 실제 배포 서비스, Windows, 보고서 폴더가 있는 작업의 자동 삭제, project.md 생성, 블로그 코디네이터·발행
