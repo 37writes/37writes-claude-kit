@@ -1,7 +1,7 @@
 ---
 title: 개인 디자인 시스템과 ego lite 모바일 검증
 date: 2026-10-31
-status: in-progress
+status: done
 tier: T1
 ---
 
@@ -43,7 +43,7 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 - [x] S1. 기획 반박 — Claude — 반례 3개와 blog 캡처 누락을 수용, 실제 모델과 확인 결과 기록
 - [x] S2. 스킬·자산 구현 — Codex 지휘 세션 — ego에서 44개 폭/테마/모드 조합, 터치 메뉴, 키보드 마지막 항목, 시스템 모드, 깨진 fixture 탐지 통과. 실제 토큰 대비 88조합 통과. 프로필 검사 5종 통과(기존 디렉터리 경고 유지).
 - [x] S3. 독립 검증 — Claude Opus 5.5 — 최종 Task task_b733f9e9a876 / Dispatch ctx_cb4e4257d12f: R1/R2/R3 해결, 진행 차단 없음. final-review.md 참고.
-- [ ] S4. 본체 반영과 프로젝트별 위임 — Codex 지휘 세션 — 검증된 kit 원본에서 TTC/블로그 전용 worktree 에이전트로 작업 지시 전달 증거
+- [x] S4. 본체 반영과 프로젝트별 위임 — Codex 지휘 세션 — kit 본체 0.16.0 ff 반영, TTC/블로그 Claude 전용 탭에 handed-to-terminal 확인. 아래 위임 증거 참고.
 
 ## 완료 기준
 - 공통 규칙과 테마를 재사용할 실제 자산이 있고, 테마만 바꾼 시험 화면과 깨지는 모바일 반례를 ego lite로 확인한다.
@@ -59,7 +59,7 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 - 수정 뒤 44행에서 각각 위/아래 방문 및 8개 실조작/회귀 플래그 통과. 320px/200% 캡처를 직접 확인.
 
 ## 남은 일
-- Claude 독립 검증, 본체 반영, 프로젝트 위임.
+- kit 구현·검수·본체 반영·프로젝트 위임은 완료. TTC/블로그 실제 수정·배포는 아래 독립 프로젝트 담당자가 소유하며 여기서 완료로 주장하지 않는다.
 - skill-creator quick_validate.py는 시스템 Python에 PyYAML이 없어 실행 불가. 설치하지 않고 frontmatter/참조를 직접 확인하고 claude plugin validate를 실행했다.
 - font asset 미포함으로 미리보기는 시스템 fallback. 실제 프로젝트 글꼴 로드와 실기기는 각 프로젝트 담당자가 검증/미검증을 명시.
 - 검증 중 키보드 마지막 링크가 스크롤 영역 밖에 남는 반례를 발견해 preview의 focusin 스크롤 처리로 수정하고 재검증했다.
@@ -72,3 +72,12 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 ## S3 최종 결과
 - Claude가 정상 숨김 조상 대조군 8개와 잘린 스크롤 viewport 반례 6개를 독립 확인했다. 남은 P3 중 회귀 fixture는 Claude가 확인한 440px로 교체하고 scrollWidth > clientWidth 단언을 추가. 문서에 비조작 콘텐츠·세로 잘림 한계와 조상별 후보 묶음을 추가했다.
 - 최종 ego runSmoke 44행/9개 플래그 통과. TaskSpace10 finish 완료. 두 Claude 검수 탭은 user_takeover/external_terminal로 보존; 지휘자 소유의 미정산 워커 없음.
+
+## 프로젝트 위임 증거
+- TTC: worktree `54a2c08a-12b4-4c5e-a304-07836851133f::/Users/jeongjaehun/orca/workspaces/00 tech-tree-canvas/mobile-menu-design`, Claude handle `term_033bcade-d136-46f8-8ee2-a41fdbd078f0`, prompt `handed-to-terminal`, operation `1793376011640-2b26ada3c88244268d794b8c199a3787`. 소유권 전체 위임, 수신자 완료를 기다리는 감독 Task를 만들지 않음.
+- 블로그: worktree `8093adfb-06b2-44e4-ae79-3948cee89968::/Users/jeongjaehun/orca/workspaces/tech-blog/personal-design-system`, Claude handle `term_3cd464a1-eb3a-4d92-ac38-eff3df7148bb`, prompt `handed-to-terminal`, operation `1793376016836-ddba89458c464c14aa5b260b5fcbfd38`. 소유권 전체 위임, 수신자 완료를 기다리는 감독 Task를 만들지 않음.
+
+## 최종 결과
+- 플러그인 0.16.0, 디자인 시스템 1.0.0. 공통 규칙·테마·프로필·ego 검증 도우미와 blog ego 절차 반영. source의 미추적 tsconfig.json 보존.
+- 검증: plugin validate 및 plugin test(6), guard(58), deploy gate(56), plans(32), 구문/차이 검사; 대비 88쌍; ego 44행 및 9개 플래그. Claude 독립 설계·구현 검수 및 결함 수정 완료. quick_validate(PyYAML 없음)·실기기·웹폰트 실제 사용 한계는 위에 명시.
+- ego TaskSpace10 종료, 로컬 8769 미리보기 서버 종료. user_takeover Claude term_01010f83-3b0b-4927-a9a9-707d7d30b4b1 및 term_37e14749-4997-4ee0-9880-fea2ad2d74c3 보존. 작업 worktree는 삭제하지 않음.
