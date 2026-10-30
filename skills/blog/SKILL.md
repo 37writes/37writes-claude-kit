@@ -90,7 +90,7 @@ sh <base directory>/../../scripts/py.sh <base directory>/../../scripts/blog_coor
 
 `<wt>` = 글 worktree 경로, `<wt id>` = 그 Orca worktree id. 기록 파일 (재시작 때 이것으로 이어간다):
 - `<inbox>/coordinator.json`: Run id 하나 (`{"run": "<run_id>"}`)
-- `<inbox>/<slug>/state.md`: worktree id·경로, 브랜치, Task, Dispatch 목록(종류 `글`·`수정`·`검수`와 상태), 지금 단계, 사용자 승인 여부
+- `<inbox>/<slug>/state.md`: worktree id·경로, 브랜치, Task, Dispatch 목록(종류 `글`·`수정`·`검수`와 상태), ego spaceId·Page label, 지금 단계, 사용자 승인 여부
 - `<inbox>/<slug>/spec.md`: K3에서 보낸 작업 지시 전문 (수정 지시와 새 워커에 다시 쓴다)
 
 ### K1. 시작 (세션마다 한 번)
@@ -354,11 +354,11 @@ description: "검색 결과에 보일 요약 120~160자"
    orca worktree rm --worktree id:<wt id> --force --json      # worktree와 <branch> 브랜치 삭제
    git -C <main> branch --list <branch>                        # 남았으면 git -C <main> branch -d <branch> (이미 병합돼 -d로 충분)
    ```
-4. **브리프** (걸러야 할 회사 항목이 적혀 있다). slug가 비면 다른 글까지 지우므로 이 형태 그대로:
+4. **ego 정리**: 같은 요청/시리즈의 모든 캡처·검수 워커가 끝나고 브라우저 작업이 더 없을 때 코디네이터가 `const task = await taskSpace(spaceId); await task.finish({ keep: [] });`를 정확히 한 번 실행한다. 아직 다른 글 워커가 쓰거나 사용자 제어/오류 상태면 finish하지 않고 ego 안내를 따른다. 사용자가 결과 페이지 보존을 요청한 경우에만 keep에 해당 label을 넣는다.
+
+5. **브리프** (걸러야 할 회사 항목이 적혀 있다). slug가 비면 다른 글까지 지우므로 이 형태 그대로:
    ```sh
    SLUG=<slug>; rm -r "$HOME/.config/37writes-kit/blog/${SLUG:?}"
    ```
-
-5. **ego 정리**: 같은 요청/시리즈의 모든 캡처·검수 워커가 끝나고 브라우저 작업이 더 없을 때 코디네이터가 `const task = await taskSpace(spaceId); await task.finish({ keep: [] });`를 정확히 한 번 실행한다. 아직 다른 글 워커가 쓰거나 사용자 제어/오류 상태면 finish하지 않고 ego 안내를 따른다. 사용자가 결과 페이지 보존을 요청한 경우에만 keep에 해당 label을 넣는다.
 
 사용자에게 글 주소와 정리 결과(지운 worktree·브랜치)를 보고한다. Orca가 없었으면 3번 대신 `git -C <main> worktree remove <경로>`와 `branch -d`.

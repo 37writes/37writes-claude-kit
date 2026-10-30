@@ -63,3 +63,8 @@ kit:design을 사용자의 일관된 AI 디자이너로 만든다. Apple에서 �
 - skill-creator quick_validate.py는 시스템 Python에 PyYAML이 없어 실행 불가. 설치하지 않고 frontmatter/참조를 직접 확인하고 claude plugin validate를 실행했다.
 - font asset 미포함으로 미리보기는 시스템 fallback. 실제 프로젝트 글꼴 로드와 실기기는 각 프로젝트 담당자가 검증/미검증을 명시.
 - 검증 중 키보드 마지막 링크가 스크롤 영역 밖에 남는 반례를 발견해 preview의 focusin 스크롤 처리로 수정하고 재검증했다.
+
+## S3 재검증 반영
+- Claude Opus 5.5, Task task_a27a14f42cd3 / Dispatch ctx_3b7c91675f53가 F1/F2 해결을 독립 확인. R1 오탐은 scroll viewport를 기준으로 바깥 조상의 clipping을 비교하도록 수정. 정상 body/패널 hidden·clip 대조군과 스크롤 viewport 자체 잘림 반례를 추가했다.
+- R2는 비조작 콘텐츠 clipping 미검사 한계와 root/body 숨김 경고를 추가. R3는 blog state.md 항목과 finish 후 브리프 삭제 순서를 수정. R4 ego 업그레이드는 범위 밖이므로 수행하지 않음.
+- 수정 후 ego 44행 및 9개 플래그 통과, node 구문 검사 및 git diff --check 통과. 최종 R1 확인은 같은 Claude 검수 탭 재사용.

@@ -64,19 +64,23 @@ export async function measureUI(page, options = {}) {
       if (r.width < c.minTarget - .5 || r.height < c.minTarget - .5)
         issues.push({ type: "small-target", ...identify(el), box });
       let scrollOwner = null;
+      let exposed = { left: r.left, right: r.right };
       for (let p = el.parentElement; p; p = p.parentElement) {
         const s = getComputedStyle(p), pr = p.getBoundingClientRect();
         if (s.display === "contents") continue;
         const left = pr.left + p.clientLeft, right = left + p.clientWidth;
-        if (["auto", "scroll"].includes(s.overflowX) && p.scrollWidth > p.clientWidth + 1 && !["BODY", "HTML"].includes(p.tagName))
+        if (["auto", "scroll"].includes(s.overflowX) && p.scrollWidth > p.clientWidth + 1 && !["BODY", "HTML"].includes(p.tagName)) {
           scrollOwner ??= p;
-        if (["hidden", "clip"].includes(s.overflowX) && (r.left < left - 1 || r.right > right + 1)) {
+          // Outer ancestors clip the scroll viewport, not its offscreen descendants.
+          exposed = { left, right };
+        }
+        if (["hidden", "clip"].includes(s.overflowX) && (exposed.left < left - 1 || exposed.right > right + 1)) {
           issues.push({ type: "clipped-by-ancestor", ...identify(el), ancestor: identify(p), box });
           break;
         }
       }
       if (r.left < -1 || r.right > innerWidth + 1)
-        issues.push({ type: scrollOwner ? "outside-scroll-window" : "outside-viewport", ...identify(el), box });
+        issues.push({ type: scrollOwner && exposed.left >= -1 && exposed.right <= innerWidth + 1 ? "outside-scroll-window" : "outside-viewport", ...identify(el), box });
       if (!["INPUT", "TEXTAREA"].includes(el.tagName) && el.scrollWidth > el.clientWidth + 1 && ["hidden", "clip"].includes(getComputedStyle(el).overflowX))
         issues.push({ type: "clipped-control", ...identify(el), box });
     }
@@ -109,6 +113,8 @@ export async function measureUI(page, options = {}) {
       url: location.href, requested: c, actual, environmentMatches: mismatches.length === 0, mismatches,
       counts: { controls: selected.length, inspected, hidden, offscreen, nowrap: nowrap.length, nowrapInspected },
       coverageWarnings: [
+        ...([document.documentElement, document.body].some(el => ["hidden", "clip"].includes(getComputedStyle(el).overflowX))
+          ? ["root/body hides horizontal overflow; inspect non-control content visually"] : []),
         ...(selected.length === 0 ? ["control selector matched no elements"] : []),
         ...(c.nowrapSelector && nowrap.length === 0 ? ["nowrap selector matched no elements"] : []),
         ...(offscreen ? ["offscreen geometry measured; scroll and verify reachability separately"] : []),
@@ -117,6 +123,7 @@ export async function measureUI(page, options = {}) {
       fonts: { status: document.fonts.status, faces: [...document.fonts].map(f => ({ family: f.family, status: f.status })) },
       issues,
       limitations: ["rendered DOM geometry only; not a pass/fail verdict", "no virtualized content, iframe or shadow DOM scan",
+        "clipping inspection covers selected controls only, not arbitrary text or images",
         "does not prove touch actions, occlusion, keyboard behavior, actual font use, or real-device compatibility"],
     };
   }, config);

@@ -110,9 +110,24 @@ export async function runSmoke(page, url) {
       document.body.style.overflowX = "hidden";
     });
     const masked = await measureUI(page, { expectedWidth: 390, expectedMobile: true });
-    assert.ok(masked.issues.some(i => i.type === "clipped-by-ancestor" || i.type === "outside-viewport"));
+    assert.ok(masked.issues.some(i => i.type === "outside-viewport" && ["menu-toggle", "preview-title"].includes(i.id)));
+    // Hidden outer ancestors must not reject legitimate horizontal scroll windows.
+    for (const target of ["body", "#work"]) {
+      for (const overflow of ["hidden", "clip"]) {
+        await page.goto(url);
+        await page.evaluate(({ target, overflow }) => {
+          document.querySelector(target).style.overflowX = overflow;
+        }, { target, overflow });
+        assertGeometry(await measureUI(page, { expectedWidth: 390, expectedMobile: true }));
+      }
+    }
+    // An oversized scroll viewport itself is still clipped by its outer panel.
+    await page.evaluate(() => { document.querySelector(".kit-scroll").style.minWidth = "600px"; });
+    const clippedScroll = await measureUI(page, { expectedWidth: 390, expectedMobile: true });
+    assert.ok(clippedScroll.issues.some(i => i.type === "clipped-by-ancestor" && i.classes.includes("kit-tab")));
     return { rows, colors, touchMenu: true, keyboardMenuAndLastLink: true, systemMode: true, brokenFixtureDetected: true,
-      enlargedText: true, belowFoldRegression: true, closedDetailsExcluded: true, maskedOverflowDetected: true };
+      enlargedText: true, belowFoldRegression: true, closedDetailsExcluded: true, maskedOverflowDetected: true,
+      nestedScrollClipping: true };
   } finally {
     await resetViewport(page);
   }

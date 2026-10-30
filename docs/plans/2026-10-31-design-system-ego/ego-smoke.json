@@ -518,5 +518,6 @@
   "enlargedText": true,
   "belowFoldRegression": true,
   "closedDetailsExcluded": true,
-  "maskedOverflowDetected": true
+  "maskedOverflowDetected": true,
+  "nestedScrollClipping": true
 }
