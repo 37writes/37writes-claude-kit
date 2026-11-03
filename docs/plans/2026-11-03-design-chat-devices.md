@@ -103,7 +103,7 @@ tier: T1
   - 기존 프로필이 있는 블로그 메뉴 라벨 하나 수정
   - 프로필 없는 새 분석 화면의 방향 선택
   - 가상 채팅 화면(S2b 뒤)
-  - S2a 결과: Codex 워커(자기 보고 GPT-6, provider model 필드 없음), Task `task_cef7936ce564`, Dispatch `ctx_ab56621ccd3d`, 보고서 `validation-s2a.md`. 판정 수정 필요, 지적 2개 수용. A: 기준 화면이 없는 첫 화면의 기준 route/fixture 고정 절차 추가(system.md 한 디자이너 점검·방향 선택 4, SKILL.md 2절). B: 보드 출처 URL에서 계정·인증·추적값 제거. 공개 필터 노출 없음. 재대조 대기.
+  - S2a 결과: Codex 워커(자기 보고 GPT-6, provider model 필드 없음), Task `task_cef7936ce564`, Dispatch `ctx_ab56621ccd3d`, 보고서 `validation-s2a.md`. 판정 수정 필요, 지적 2개 수용. A: 기준 화면이 없는 첫 화면의 기준 route/fixture 고정 절차 추가(system.md 한 디자이너 점검·방향 선택 4, SKILL.md 2절). B: 보드 출처 URL에서 계정·인증·추적값 제거. 공개 필터 노출 없음. 재대조(Dispatch `ctx_637d8b164349`, `validation-s2a-recheck.md`) 통과, 충돌·새 모호함 없음.
 - [ ] S4. 본체 반영 — 지휘 세션 — S2a 검증 뒤 kit main에 ff 병합(0.17.0). S2b는 따로 병합한다. push는 프로필상 배포가 아니지만 사용자에게 보고한 뒤에 한다.
 
 ## 완료 기준
