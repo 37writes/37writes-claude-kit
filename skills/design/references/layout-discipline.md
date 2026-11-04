@@ -21,7 +21,7 @@
 
 화면 유형(소개·읽기·작업·대화형)과 상관없이 지킨다. 숫자 상한은 여기 없다.
 
-1. **같은 역할끼리 기준선 일치.** 같은 역할의 형제 영역에서 면의 왼쪽, 글자 시작, 오른쪽 끝이 같은 x에 놓인다. 역할이 다른 것(트리 깊이, 표의 수치 열, 인용·목록 들여쓰기, 본문과 목차)은 각자 별도 역할이라 서로 맞추지 않는다. 긴 내용·글자 확대 때문에 높이나 위치가 달라져야 하면 잘라서 맞추지 않고 배치를 바꾼다.
+1. **같은 역할끼리 기준선 일치.** 한 영역 안에서는 같은 역할의 요소끼리 면 왼쪽·글자 시작·오른쪽 끝을 각각 같은 x에 맞춘다. 나란한 형제 영역 사이에서는 각 영역의 기준점에 대한 같은 역할의 오프셋과 토큰을 비교하며, 서로 다른 열의 viewport x를 같게 만들지 않는다. 역할이 다른 것(트리 깊이, 표의 수치 열, 인용·목록 들여쓰기, 본문과 목차)은 각자 별도 역할이라 서로 맞추지 않는다. 긴 내용·글자 확대 때문에 높이나 위치가 달라져야 하면 잘라서 맞추지 않고 배치를 바꾼다.
 2. **같은 역할은 같은 토큰.** 같은 역할의 글자·간격·모서리·선·색은 한 벌이다([한 디자이너 점검](system.md#한-디자이너-점검)). 간격은 system.md의 단계 값을 쓰고, 단계 밖 값(rem 확대 결과, 광학 보정 등)은 이유를 프로필에 적는다.
 3. **정보를 뺄 때 판단 과업 보존.** 남길지 뺄지는 반복 여부가 아니라 **판단·비교·다음 행동에 필요한가**로 정한다. 비교할 때 행마다 필요한 근거, 결과가 전체인지 일부인지 알리는 범위, 불확실성·진행·중지 표시는 정상 상태에서도 남긴다. 뺐으면 [정보 이동 표](#정보-이동-표와-과업-확인)와 과업 확인을 남긴다. 목적지에 닿았다는 것만으로 통과시키지 않는다.
 4. **장식선과 기능선 구분.** 줄이는 것은 장식선이다. 입력 경계·포커스·표 구분선·차트 축 같은 기능선과 데이터 표현은 줄이는 대상이 아니다([공통 원칙](system.md#공통-원칙)의 색 역할).
@@ -40,8 +40,8 @@
 
 | 항목 | 권장값 |
 |---|---|
-| 세로 기준선 | 영역마다 둘: 면의 왼쪽(검색 상자·선택 면·버튼 면)과 글자 시작(제목·탭 첫 글자·행 이름·본문) |
-| 오른쪽 끝 | 닫기·수·행 끝 화살표·도구를 한 x에 |
+| 세로 기준선 | 영역마다 둘: 면의 왼쪽(검색 상자·선택 면·버튼 면)과 글자 시작(제목·탭 첫 글자·행 이름·본문). 세 영역은 영역 기준점 대비 오프셋이 같다 |
+| 오른쪽 끝 | 영역 안에서 닫기·수·행 끝 화살표·도구를 한 x에 |
 | 머리 줄 | 이웃한 영역이 같은 y·같은 높이, 그 아래 선 하나가 끝까지 이어짐 |
 | 버튼 안쪽 여백 | (글자 시작 − 면 왼쪽)과 같게 해서 버튼 글자가 글자 기준선에 떨어지게 |
 | 아이콘 열 | 두려면 모든 행에 둔다. 일부 행에만 두지 않는다 |
@@ -83,7 +83,7 @@
 
 - 선택자가 0개를 찾으면 성공이 아니라 **미검증**이다.
 - SVG·canvas 안의 그림, 가상 목록에서 아직 DOM에 없는 행, iframe·shadow DOM은 "미검사"에 적는다. 가상 목록은 끝까지 스크롤한 뒤 다시 잰다.
-- 0.5px 안의 x는 같은 값으로 센다.
+- x를 오름차순으로 정렬한 뒤 군집을 만든다. 각 군집의 최솟값과 0.5px 이내인 값만 같은 군집에 넣고, 그보다 큰 값에서 새 군집을 시작한다. 군집 대표값은 최솟값으로 하며 DOM 순서가 달라도 같은 좌표 집합은 같은 결과를 내야 한다.
 
 ### 2. 상태·폭마다 잰다
 
@@ -91,14 +91,14 @@
 
 | 지표 | 읽는 값 |
 |---|---|
-| 영역별 기준선 | 역할마다 면 왼쪽(요소 rect.left)·글자 시작(첫 글자 줄의 rect.left)·오른쪽 끝(rect.right) x의 고유 값 개수 |
+| 영역별 기준선 | 영역 안에서 역할마다 면 왼쪽(요소 rect.left)·글자 시작(첫 글자 Range의 left)·오른쪽 끝(rect.right) x의 고유 값 개수. 영역 사이는 영역 기준점 대비 오프셋으로 비교 |
 | 머리 줄 | 영역마다 머리 줄의 top·높이·아래 선 y |
 | 간격 | 역할 요소의 계산된 padding·gap·margin이 system.md 단계 값인지. 단계 밖 값과 이유 |
 | 정보량 | 태그·알약 수, 보이는 글자 덩어리 수, 같은 문자열의 반복 |
 | 위계 | 영역별 글자 크기·굵기 종류 |
 | 강조색 | 강조색을 쓴 요소 수와 위치(글자색·배경·선 중 무엇인지) |
 
-기준선을 읽는 예(선택자는 프로젝트 값으로 바꾼다):
+기준선을 읽는 예(선택자는 프로젝트 값으로 바꾼다). `text-left`는 선택 요소의 자손 중 실제로 렌더된 비공백 텍스트 노드를 찾아 첫 글자 Range의 좌표를 읽는다. 글자 좌표를 얻지 못하면 요소 박스로 대체하지 않고 `미검사: 글자 좌표 없음`으로 기록하며, 그 요소는 기준선 고유 값과 검사 수에서 제외한다.
 
 ```js
 // roles: 측정 전에 정한 역할 → { 선택자, 읽을 끝 }. 0개 매칭은 미검증으로 보고한다.
@@ -111,24 +111,36 @@ const report = await page.evaluate((roles) => {
     const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && cs.visibility !== "hidden";
   };
-  const edgeX = (el, edge) => {
-    if (edge === "right") return el.getBoundingClientRect().right;
-    if (edge === "text-left") {
+  // 첫 글자: 렌더된 비공백 텍스트 노드의 첫 글자 Range. 못 얻으면 null(미검사).
+  const textLeft = (el) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const i = node.data.search(/\S/);
+      if (i < 0) continue;
       const range = document.createRange();
-      range.selectNodeContents(el);
-      const first = range.getClientRects()[0];
-      if (first) return first.left;
+      range.setStart(node, i);
+      range.setEnd(node, i + (node.data.codePointAt(i) > 0xffff ? 2 : 1));
+      const r = range.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return r.left;
     }
-    return el.getBoundingClientRect().left;
+    return null;
+  };
+  const edgeX = (el, edge) => edge === "text-left" ? textLeft(el)
+    : edge === "right" ? el.getBoundingClientRect().right : el.getBoundingClientRect().left;
+  // 오름차순 정렬 뒤 군집. 군집 최솟값과 0.5px 이내면 같은 군집, 대표값은 최솟값.
+  const cluster = (xs) => {
+    const reps = [];
+    for (const x of [...xs].sort((a, b) => a - b))
+      if (!reps.length || x - reps[reps.length - 1] > 0.5) reps.push(x);
+    return reps;
   };
   return Object.fromEntries(Object.entries(roles).map(([role, { sel, edge }]) => {
-    const all = [...document.querySelectorAll(sel)], shown = all.filter(visible), xs = [];
-    for (const el of shown) {
-      const x = edgeX(el, edge);
-      if (!xs.some((v) => Math.abs(v - x) <= 0.5)) xs.push(x);
-    }
-    return [role, { sel, matched: all.length, inspected: shown.length,
-      hidden: all.length - shown.length, uniqueX: xs.sort((a, b) => a - b) }];
+    const all = [...document.querySelectorAll(sel)], shown = all.filter(visible);
+    const xs = shown.map((el) => edgeX(el, edge)), measured = xs.filter((x) => x !== null);
+    return [role, { sel, matched: all.length, inspected: measured.length,
+      hidden: all.length - shown.length,
+      uninspected: { "글자 좌표 없음": xs.length - measured.length },
+      uniqueX: cluster(measured), verdict: measured.length ? "측정" : "미검증" }];
   }));
 }, roles);
 ```

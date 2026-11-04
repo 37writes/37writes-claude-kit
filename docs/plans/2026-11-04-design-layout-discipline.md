@@ -90,7 +90,7 @@ tier: T1
 - [x] S1. 기획 반박 — Codex 워커 — `.plan-review-design-layout.md`(커밋 안 함)에 반례 최대 3개와 확인 방법. 지휘 세션이 아래 "기획 반박"에 반영한다.
   - 결과: 반례 3개 모두 수용(판단 과업 보존, 의무와 패턴 권장값 분리, 작은 수정에는 끼어들지 않음). 측정 스크립트는 첫 버전에서 뺐다.
 - [x] S2. 구현 — Claude Coder — 위 설계대로 파일 작성. `claude plugin validate .` 통과, 변경은 범위 안. 회사 이름 grep 0.
-  - 결과: `skills/design/references/layout-discipline.md` 새로 작성(언제 읽는가 → 의무 9항 → 3열 작업 화면 권장값 → 정돈 점검(evaluate 예·기록 표) → 예시 화면으로 고르기), SKILL.md 1·2·3·5절 연결과 진단 표 1행(81줄), system.md 문서 계약 1.3.0. `claude plugin validate .` 통과, 상대 링크·앵커 35개 모두 존재, 회사 이름 grep 0.
+  - 결과: `skills/design/references/layout-discipline.md` 새로 작성(언제 읽는가 → 의무 9항 → 3열 작업 화면 권장값 → 정돈 점검(evaluate 예·기록 표) → 예시 화면으로 고르기), SKILL.md 1·2·3·5절 연결과 진단 표 1행(81줄), system.md 문서 계약 1.3.0. `claude plugin validate .` 통과, 상대 링크·앵커 35개 모두 존재, 회사 이름 grep 0. S3 F1~F3 반영(실브라우저 확인).
 - [ ] S3. 독립 검증 — Codex 워커 — 새 세션에서 kit:design만 읽고 문서 적용해 본다. (A) 프로필 있는 화면의 메뉴 잘림 수정: 정돈 점검·예시 고르기가 끼어들지 않아야 한다. (B) 사용자가 두 배치 중 고르기를 요청: 비교 이미지 절차가 나와야 한다. (C) 합성 fixture 화면 넷(소개, 긴 글+목차, 계층 목록+표, 출처 있는 대화형)에 정돈 규칙을 대 보고 위계·트리·기능선이 깨지는 규칙이 없는지. 규칙끼리·system.md와 모순, 공개 레포 필터. 보고서 `.validation-design-layout.md`(커밋 안 함).
 - [ ] S4. 마무리 — 지휘 세션 — 버전·README·CLAUDE.md 결정 메모, 병합, push(프로필: 배포 아님, 다른 컴퓨터는 `/plugin update`), 완료 기록 → 기획서 삭제.
 
