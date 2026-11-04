@@ -98,7 +98,7 @@
 | 위계 | 영역별 글자 크기·굵기 종류 |
 | 강조색 | 강조색을 쓴 요소 수와 위치(글자색·배경·선 중 무엇인지) |
 
-기준선을 읽는 예(선택자는 프로젝트 값으로 바꾼다). `text-left`는 선택 요소의 자손 중 실제로 렌더된 비공백 텍스트 노드를 찾아 첫 글자 Range의 좌표를 읽는다. 글자 좌표를 얻지 못하면 요소 박스로 대체하지 않고 `미검사: 글자 좌표 없음`으로 기록하며, 그 요소는 기준선 고유 값과 검사 수에서 제외한다.
+기준선을 읽는 예(선택자는 프로젝트 값으로 바꾼다). `text-left`는 선택 요소의 자손 중 실제로 렌더되고 부모가 `visibility: visible`인 비공백 텍스트 노드를 찾아 첫 글자 Range의 좌표를 읽는다. 글자 좌표를 얻지 못하면 요소 박스로 대체하지 않고 `미검사: 글자 좌표 없음`으로 기록하며, 그 요소는 기준선 고유 값과 검사 수에서 제외한다.
 
 ```js
 // roles: 측정 전에 정한 역할 → { 선택자, 읽을 끝 }. 0개 매칭은 미검증으로 보고한다.
@@ -111,12 +111,12 @@ const report = await page.evaluate((roles) => {
     const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && cs.visibility !== "hidden";
   };
-  // 첫 글자: 렌더된 비공백 텍스트 노드의 첫 글자 Range. 못 얻으면 null(미검사).
+  // 첫 글자: 렌더되고 보이는 비공백 텍스트 노드의 첫 글자 Range. 못 얻으면 null(미검사).
   const textLeft = (el) => {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const i = node.data.search(/\S/);
-      if (i < 0) continue;
+      if (i < 0 || getComputedStyle(node.parentElement).visibility !== "visible") continue;
       const range = document.createRange();
       range.setStart(node, i);
       range.setEnd(node, i + (node.data.codePointAt(i) > 0xffff ? 2 : 1));
