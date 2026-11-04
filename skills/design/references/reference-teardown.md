@@ -52,7 +52,7 @@ ego Page에서 `page.evaluate`로 역할별 요소의 계산 스타일을 읽는
 - 상태가 성립하지 않은 표본은 그 상태의 값으로 쓰지 않는다. 예: "누름 유지" 표본의 `active`가 false면 누름 값이 아니다.
 - 누름은 키 입력 API(`press`)가 아니라 `mouse.down()`과 `try/finally`의 `mouse.up()`으로 만든다.
 - 포인터 포커스(누른 뒤 `focus`만 true)와 키보드 포커스(`focusVisible` true)는 따로 잰다.
-- 기본 표본 전에 쉬는 점에서 이전 포커스를 풀고 안정될 때까지 기다린다. 같은 페이지에서 다시 돌리면 지난 실행의 키보드 포커스가 남아 기본 표본에 포커스 링이 섞인다(실측: 공개 부품 문서의 버튼을 연속 두 번 실행). 기본은 hover·active·focus가 모두 false, 포인터 포커스는 `focusVisible`이 false일 때만 그 이름의 값이다. 조건이 다르면 그 표본은 미검증이다.
+- 기본 표본 전에 쉬는 점에서 이전 포커스를 풀고 안정될 때까지 기다린다. 같은 페이지에서 다시 돌리면 지난 실행의 키보드 포커스가 남아 기본 표본에 포커스 링이 섞인다(실측: 공개 부품 문서의 버튼을 연속 두 번 실행). 기본은 hover·active·focus가 모두 false, 포인터 포커스는 `focusVisible`이 false일 때만 그 이름의 값이다. 조건이 다르면 그 표본은 미검증이다. 기본도 안정 대기에 실패하면(예: 처음부터 도는 무한 애니메이션) 안정값으로 쓰지 않고 "애니메이션이 안 끝남(안정값 미검증)"이다.
 - 상태의 값은 **안정값**으로 읽는다. 상태를 만든 직후의 표본은 전환 시작값이다(실측: 120ms 전환의 hover 직후 배경은 기본값 그대로였다). 고정 시간 대기 대신 대상의 실행 중 애니메이션이 끝날 때까지 기다리고, 끝나지 않으면 "안정값 미검증"이다.
 - 누름 = 클릭이다. 공개 페이지에서는 눌러도 제출·이동·데이터 변경이 없는 부품(데모 버튼 등)만 대상으로 고른다.
 
@@ -62,6 +62,7 @@ ego Page에서 `page.evaluate`로 역할별 요소의 계산 스타일을 읽는
 - 표본·프레임·이벤트마다 **대상**(기준 요소 / 자손 / `::before` 같은 가상 요소)을 적는다. 자손까지 모으고 이벤트도 자손에서 올라오므로, 대상이 없으면 자식의 움직임이 기준 요소의 값으로 읽힌다(실측: 자식 span만 도는 140ms 애니메이션). 기준 요소의 값으로 쓰는 것은 대상이 기준 요소인 것뿐이다.
 - 실행 중 객체에서 duration·easing을 얻지 못한 움직임(예: 시작·끝 이벤트만 잡힌 아주 짧은 전환)은 **발생만 포착**이고 시간·곡선은 미검증이다. 일부 이벤트를 잡은 것을 그 움직임 전체의 검증으로 읽지 않는다.
 - 시간은 벽시계가 아니라 애니메이션 객체의 duration·easing과 `transitionend.elapsedTime`으로 적는다. 에이전트 Page는 프레임이 띄엄띄엄 그려져 표본·이벤트의 시각이 늘어난다(실측: 120ms 전환이 벽시계로 약 2초). 표본 시각은 순서 증거로만 쓴다.
+- 기록을 끝내거나 실행이 실패하면 설치한 이벤트 리스너와 예약된 animation frame을 먼저 해제하고, 그 뒤 페이지 도우미를 지운다. 측정이 끝난 뒤의 조작에 리스너나 페이지 오류를 남기지 않는다(실측: 해제하지 않은 리스너가 지운 도우미를 불러 측정 뒤 hover마다 페이지 오류가 났고, 같은 페이지에서 다시 돌릴 때마다 리스너가 쌓였다).
 - 이벤트와 애니메이션 목록이 모두 비면 "움직임 없음"이 아니라 **"포착 못 함(미검증)"**이다. 선언도 0s면 "선언: 전환 없음 / 실행 중: 포착 못 함"으로 둘 다 적는다.
 - JS(`requestAnimationFrame`으로 스타일을 직접 바꾸는 것)·스크롤 구동 움직임은 이 코드로 잡히지 않는다. 가상 요소의 CSS 움직임은 대상에 가상 요소 이름으로 나오지만 계산값 표본은 기준 요소 것이다. 잡히지 않는 것은 시각 관찰(전/중/후 프레임)이나 추론으로 표시한다.
 
@@ -117,20 +118,32 @@ const want = (x, cond) => {
   return x;
 };
 // 실행 중 값: 조작 전에 이벤트와 매 프레임의 getAnimations()를 대상과 함께 페이지 안에서 기록한다.
+// 리스너는 AbortController로, 프레임은 저장한 ID로 해제한다(측정이 끝난 뒤 페이지에 아무것도 남기지 않게).
 const record = (sel) => page.evaluate((sel) => {
-  const el = document.querySelector(sel), log = { events: [], frames: [] };
-  window.__teardown = log;
+  const el = document.querySelector(sel), { who, run } = window.__td;
+  const rec = { log: { events: [], frames: [] }, stop: new AbortController(), frame: 0 };
+  window.__teardown = rec;
   for (const type of ["transitionrun", "transitionend", "transitioncancel", "animationstart", "animationend"])
-    el.addEventListener(type, (e) => log.events.push({ type, target: window.__td.who(el, e.target, e.pseudoElement),
-      name: e.propertyName ?? e.animationName, elapsed: e.elapsedTime, t: performance.now() }));
+    el.addEventListener(type, (e) => rec.log.events.push({ type, target: who(el, e.target, e.pseudoElement),
+      name: e.propertyName ?? e.animationName, elapsed: e.elapsedTime, t: performance.now() }),
+      { signal: rec.stop.signal });
   const tick = () => {
+    if (rec.stop.signal.aborted) return;
     const running = el.getAnimations({ subtree: true });
-    if (running.length) log.frames.push({ t: performance.now(), running: running.map((a) => window.__td.run(el, a)) });
-    if (window.__teardown === log) requestAnimationFrame(tick);
+    if (running.length) rec.log.frames.push({ t: performance.now(), running: running.map((a) => run(el, a)) });
+    rec.frame = requestAnimationFrame(tick);
   };
-  requestAnimationFrame(tick);
+  rec.frame = requestAnimationFrame(tick);
 }, sel);
-const stopRecord = () => page.evaluate(() => { const log = window.__teardown; delete window.__teardown; return log; });
+// 기록 끝: 리스너와 예약된 프레임을 먼저 해제하고 기록을 돌려준다. 기록 중이 아니면 null.
+const stopRecord = () => page.evaluate(() => {
+  const rec = window.__teardown;
+  if (!rec) return null;
+  rec.stop.abort();
+  cancelAnimationFrame(rec.frame);
+  delete window.__teardown;
+  return rec.log;
+});
 // 안정값: 고정 대기 대신 대상의 실행 중 애니메이션이 끝날 때까지 기다린다(못 끝나면 미검증).
 // 에이전트 Page는 프레임이 띄엄띄엄 그려져 벽시계 시간과 애니메이션 진행이 어긋날 수 있다.
 const settle = (sel) => page.waitForFunction((sel) => document.querySelector(sel)
@@ -154,62 +167,66 @@ const locate = (sel) => page.evaluate((sel) => {
 }, sel);
 
 const report = {};
-for (const [role, sel] of Object.entries(targets)) {
-  const at = await locate(sel);
-  if (at.error) { report[role] = { sel, verdict: at.error }; continue; }
-  const s = [];
-  // 기본: 쉬는 점에서 이전 포커스(지난 실행의 키보드 포커스 등)를 풀고 안정된 뒤 잰다.
-  await page.mouse.move(at.rest.x, at.rest.y);
-  await page.evaluate(() => document.activeElement?.blur());
-  await settle(sel);
-  await record(sel);
-  s.push(want(await sample(sel, "기본"), { hover: false, active: false, focus: false }));
-  await page.mouse.move(at.x, at.y, { label: "hover 대상" });
-  s.push(await sample(sel, "hover 직후"));
-  s.push(want(await settled(sel, "hover 안정"), { hover: true, active: false }));
-  await page.mouse.down();
-  try {
-    s.push(await sample(sel, "누름 직후"));
-    s.push(want(await settled(sel, "누름 유지 안정"), { active: true }));
-  } finally {
-    await page.mouse.up();
-  }
-  // 포인터 포커스: 누른 뒤의 focus가 focus-visible이 아닐 때만 그 이름의 값이다.
-  s.push(want(await settled(sel, "해제(포인터 포커스)"), { active: false, focus: true, focusVisible: false }));
-  await page.mouse.move(at.rest.x, at.rest.y);
-  await settle(sel);
-  const runtime = await stopRecord();
-  // 키보드 포커스: 쉬는 점을 눌러 탐색 시작점을 대상 근처로 옮기고 Tab으로 도달한다.
-  await page.mouse.click(at.rest.x, at.rest.y, { label: "탐색 시작점" });
-  let reached = false;
-  for (let i = 0; i < 30 && !reached; i++) {
-    await page.keyboard.press("Tab");
-    reached = await page.evaluate((sel) => document.activeElement === document.querySelector(sel), sel);
-  }
-  s.push(reached ? want(await settled(sel, "키보드 포커스"), { hover: false, focusVisible: true })
-    : { label: "키보드 포커스", verdict: "Tab 30회 안에 도달 못 함(미검증)" });
-  const t0 = s[0].t;
-  for (const x of s) if (x.t !== undefined) x.t = Math.round(x.t - t0);
-  for (const e of [...runtime.events, ...runtime.frames]) e.t = Math.round(e.t - t0);
-  // 움직임: 대상·이름별로 묶는다. 실행 중 객체에서 duration·easing을 얻지 못한 묶음(이벤트만)은 미검증이다.
-  const groups = {};
-  const group = (x) => (groups[`${x.target} ${x.name}`] ??= { target: x.target, name: x.name, events: [], frames: 0 });
-  for (const e of runtime.events) group(e).events.push(`${e.type} ${e.elapsed}s`);
-  for (const f of runtime.frames) for (const a of f.running) group(a).frames++;
-  for (const a of [...runtime.frames.flatMap((f) => f.running), ...s.flatMap((x) => x.running ?? [])])
-    Object.assign(group(a), { kind: a.kind, duration: a.duration, easing: a.easing, keyframeEasing: a.keyframeEasing });
-  const motion = Object.values(groups).map((g) => ({ ...g,
-    verdict: g.easing === undefined ? "발생만 포착: duration·easing 미검증" : "실행 중 값 포착" }));
-  report[role] = { sel, samples: s, runtime: { events: runtime.events, frames: runtime.frames.length },
-    motion: motion.length ? motion : "포착 못 함(미검증)" };
-}
-// 움직임 줄이기: 같은 실행에서 media를 바꿔 선언값을 다시 읽고, finally에서 되돌린다.
-await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
 try {
-  for (const [role, sel] of Object.entries(targets)) if (report[role].samples)
-    report[role].reducedMotion = (await sample(sel, "움직임 줄이기")).declared;
+  for (const [role, sel] of Object.entries(targets)) {
+    const at = await locate(sel);
+    if (at.error) { report[role] = { sel, verdict: at.error }; continue; }
+    const s = [];
+    // 기본: 쉬는 점에서 이전 포커스(지난 실행의 키보드 포커스 등)를 풀고, 기록을 시작한 뒤 안정값으로 잰다.
+    // 기본도 안정 대기에 실패하면 안정값으로 쓰지 않는다. 시각의 기준은 표본과 따로 둔다.
+    await page.mouse.move(at.rest.x, at.rest.y);
+    await page.evaluate(() => document.activeElement?.blur());
+    const t0 = await page.evaluate(() => performance.now());
+    await record(sel);
+    s.push(want(await settled(sel, "기본"), { hover: false, active: false, focus: false }));
+    await page.mouse.move(at.x, at.y, { label: "hover 대상" });
+    s.push(await sample(sel, "hover 직후"));
+    s.push(want(await settled(sel, "hover 안정"), { hover: true, active: false }));
+    await page.mouse.down();
+    try {
+      s.push(await sample(sel, "누름 직후"));
+      s.push(want(await settled(sel, "누름 유지 안정"), { active: true }));
+    } finally {
+      await page.mouse.up();
+    }
+    // 포인터 포커스: 누른 뒤의 focus가 focus-visible이 아닐 때만 그 이름의 값이다.
+    s.push(want(await settled(sel, "해제(포인터 포커스)"), { active: false, focus: true, focusVisible: false }));
+    await page.mouse.move(at.rest.x, at.rest.y);
+    await settle(sel);
+    const runtime = await stopRecord();
+    // 키보드 포커스: 쉬는 점을 눌러 탐색 시작점을 대상 근처로 옮기고 Tab으로 도달한다.
+    await page.mouse.click(at.rest.x, at.rest.y, { label: "탐색 시작점" });
+    let reached = false;
+    for (let i = 0; i < 30 && !reached; i++) {
+      await page.keyboard.press("Tab");
+      reached = await page.evaluate((sel) => document.activeElement === document.querySelector(sel), sel);
+    }
+    s.push(reached ? want(await settled(sel, "키보드 포커스"), { hover: false, focusVisible: true })
+      : { label: "키보드 포커스", verdict: "Tab 30회 안에 도달 못 함(미검증)" });
+    for (const x of [...s, ...runtime.events, ...runtime.frames]) if (x.t !== undefined) x.t = Math.round(x.t - t0);
+    // 움직임: 대상·이름별로 묶는다. 실행 중 객체에서 duration·easing을 얻지 못한 묶음(이벤트만)은 미검증이다.
+    const groups = {};
+    const group = (x) => (groups[`${x.target} ${x.name}`] ??= { target: x.target, name: x.name, events: [], frames: 0 });
+    for (const e of runtime.events) group(e).events.push(`${e.type} ${e.elapsed}s`);
+    for (const f of runtime.frames) for (const a of f.running) group(a).frames++;
+    for (const a of [...runtime.frames.flatMap((f) => f.running), ...s.flatMap((x) => x.running ?? [])])
+      Object.assign(group(a), { kind: a.kind, duration: a.duration, easing: a.easing, keyframeEasing: a.keyframeEasing });
+    const motion = Object.values(groups).map((g) => ({ ...g,
+      verdict: g.easing === undefined ? "발생만 포착: duration·easing 미검증" : "실행 중 값 포착" }));
+    report[role] = { sel, samples: s, runtime: { events: runtime.events, frames: runtime.frames.length },
+      motion: motion.length ? motion : "포착 못 함(미검증)" };
+  }
+  // 움직임 줄이기: 같은 실행에서 media를 바꿔 선언값을 다시 읽고, finally에서 되돌린다.
+  await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  try {
+    for (const [role, sel] of Object.entries(targets)) if (report[role].samples)
+      report[role].reducedMotion = (await sample(sel, "움직임 줄이기")).declared;
+  } finally {
+    await page.cdp("Emulation.setEmulatedMedia", { features: [] });
+  }
 } finally {
-  await page.cdp("Emulation.setEmulatedMedia", { features: [] });
+  // 끝나거나 중간에 실패해도: 기록 리스너·예약 프레임을 먼저 해제하고 그 뒤 페이지 도우미를 지운다.
+  await stopRecord();
   await page.evaluate(() => { delete window.__td; });
 }
 console.log(JSON.stringify(report, null, 1));
@@ -219,7 +236,7 @@ console.log(JSON.stringify(report, null, 1));
 
 | 결과 | 기록 |
 |---|---|
-| `samples[].label`·`t`·`hover`·`active`·`focus`·`focusVisible` | 표본별 상태 성립과 순서. `verdict: "상태 불성립 …(미검증)"`이 붙은 표본은 그 상태의 값으로 쓰지 않는다 |
+| `samples[].label`·`t`·`hover`·`active`·`focus`·`focusVisible` | 표본별 상태 성립과 순서. `t`는 기록 시작 기준(ms)이라 기본 표본이 미검증이어도 이어진다. `verdict: "상태 불성립 …(미검증)"`이 붙은 표본은 그 상태의 값으로 쓰지 않는다 |
 | "… 안정" 표본의 `values` | 그 상태의 실측값 |
 | `{ verdict: "애니메이션이 안 끝남(안정값 미검증)" }` | 그 상태 값은 미검증 |
 | `declared` | 선언값(근거 종류: 실측, 선언) |
@@ -262,7 +279,7 @@ console.log(JSON.stringify(report, null, 1));
 
 적용 뒤 `채택 토큰 → 소비하는 선언/컴포넌트 → 계산값`을 추적해 시트의 "우리 값"과 맞는지 본다. 변수만 선언된 경우는 실패다.
 
-1. 토큰 연결: 아래 코드로 토큰마다 선언한 곳, 읽는 선언, 소비 요소마다 그 범위의 토큰 값·해석값을 얻는다. 우리 화면에서만 쓴다(검사용 요소를 잠깐 붙였다 뗀다). 선언 여부와 해석값은 **실제 소비 요소의 계산 스타일과 변수 상속 범위**에서 본다. 부품 범위 토큰(`#card { --card-radius: 13px }`)은 루트에 없어도 정상이다. 인라인 `style`의 소비는 그 요소와 실제 속성명으로 계산한다.
+1. 토큰 연결: 아래 코드로 토큰마다 선언한 곳, 읽는 선언, 소비 요소마다 그 범위의 토큰 값·해석값을 얻는다. 우리 화면에서만 쓴다(검사용 요소를 잠깐 붙였다 뗀다). 선언 여부와 해석값은 **실제 소비 요소의 계산 스타일과 변수 상속 범위**에서 본다. 부품 범위 토큰(`#card { --card-radius: 13px }`)은 루트에 없어도 정상이다. 인라인 `style`의 소비는 그 요소와 실제 속성명으로 계산한다. 해석값은 토큰 문자열뿐 아니라 소비 요소의 단위·상속 문맥(글꼴·색)을 옮겨 얻는다(실측: 글꼴 32px 버튼의 `1em` 토큰을 독립 요소에서 풀면 16px). 그 문맥을 재현할 수 없는 값(`%`·컨테이너 단위처럼 박스에 기대는 값, 부모에 기대는 글꼴 속성의 상대 단위)은 `resolved: null`, 해석값 미검증으로 남기고 독립 요소의 값을 정답으로 쓰지 않는다. 이때는 소비 요소의 계산값(`now`)과 상태 표본만 대조한다.
 2. 계산값: 같은 부품에 [실측 예](#실측-예)를 돌려 안정 표본의 값이 1의 해석값(`uses[].at[].resolved`)과 같은지 본다(예: 누름 그림자 토큰의 해석값 = "누름 유지 안정" 표본의 `box-shadow`). 상태 선택자가 없는 선언은 `at[].now`(지금 계산값)와도 같아야 한다.
 3. 상태·모드: 기본/hover/누름/disabled/키보드 포커스, 밝은/어두운/시스템 모드, 움직임 줄이기에서 확인한다. 기존 화면의 같은 역할 부품이 바뀌지 않았는지 대조한다.
 4. SKILL.md 5절 검증(터치·키보드·확대)도 통과해야 한다. 독립 검토는 [정돈 점검](layout-discipline.md#정돈-점검)과 같은 입력(원래 요구·화면·시트·프로필)으로 하고 작성자의 합격 결론은 주지 않는다. 선택표의 미관/과업 성공 분리는 그대로다.
@@ -306,7 +323,9 @@ const trace = await page.evaluate((tokens) => {
   for (const el of document.querySelectorAll("[style]"))
     note(el.style, { inline: el.localName + (el.id ? `#${el.id}` : ""), media: "", pseudo: null }, [el]);
   const root = getComputedStyle(document.documentElement);
-  const probe = document.createElement("div");
+  // 해석용 요소: 소비 요소에서 em·ex·ch·lh·currentColor가 기대는 글꼴·색 문맥을 복사해 쓴다.
+  const probe = document.createElement("div"), context = ["font-family", "font-size", "font-weight",
+    "font-style", "font-stretch", "line-height", "color"];
   document.body.append(probe);
   const out = {};
   for (const name of tokens) {
@@ -314,11 +333,18 @@ const trace = await page.evaluate((tokens) => {
       if (!els) return { ...u, matched: null, at: [] };
       const at = new Map();
       for (const el of els) {
-        // 소비 요소 범위의 토큰 값(부품 범위 선언·상속 포함)을 그 속성에 넣어 해석한다.
+        // 소비 요소 범위의 토큰 값(부품 범위 선언·상속 포함)을 그 요소의 글꼴·색 문맥으로 해석한다.
+        // 박스·컨테이너에 기대는 값(%·cq*)과 부모에 기대는 글꼴 속성의 상대 단위는 재현하지 않고 미검증으로 둔다.
         const cs = getComputedStyle(el, u.pseudo), value = cs.getPropertyValue(name).trim();
+        const unsure = value && (/%|\dcq(w|h|i|b|min|max)\b/i.test(value)
+          || (/^(font|line-height)/.test(u.prop) && /\d(em|ex|ch|cap|ic|lh)\b/i.test(value)));
         probe.style.cssText = "";
-        if (value) { probe.style.setProperty(name, value); probe.style.setProperty(u.prop, `var(${name})`); }
-        const row = { value, resolved: value ? getComputedStyle(probe).getPropertyValue(u.prop) : "",
+        if (value && !unsure) {
+          for (const p of context) probe.style.setProperty(p, cs.getPropertyValue(p));
+          probe.style.setProperty(name, value);
+          probe.style.setProperty(u.prop, `var(${name})`);
+        }
+        const row = { value, resolved: !value ? "" : unsure ? null : getComputedStyle(probe).getPropertyValue(u.prop),
           now: cs.getPropertyValue(u.prop) };
         const key = JSON.stringify(row);
         at.set(key, { ...row, count: (at.get(key)?.count ?? 0) + 1 });
@@ -332,7 +358,8 @@ const trace = await page.evaluate((tokens) => {
         : !consumed.length ? (list.some((u) => u.matched === null) ? "소비 요소 미검사" : "소비 요소 0개(미검증)")
         : !defined.length ? "선언 없음: 소비 요소 범위에 값 없음(실패)"
         : !defined.some((u) => u.live) ? "현재 media에서 안 쓰임(미검증)"
-        : "연결됨(계산값은 상태 표본과 대조)" };
+        : defined.some((u) => u.live && u.at.some((a) => a.resolved === null))
+          ? "연결됨(일부 해석값 미검증: 계산값만 대조)" : "연결됨(계산값은 상태 표본과 대조)" };
   }
   probe.remove();
   return { tokens: out, uninspected };
@@ -343,6 +370,7 @@ console.log(JSON.stringify(trace, null, 1));
 | `verdict` | 뜻 |
 |---|---|
 | 연결됨(계산값은 상태 표본과 대조) | 선언이 읽고 소비 요소 범위에 값이 있다. 2단계 대조가 남았다 |
+| 연결됨(일부 해석값 미검증: 계산값만 대조) | 연결은 됐지만 일부 소비 요소의 해석값(`resolved: null`)을 재현하지 못했다. `now`와 상태 표본으로만 대조한다 |
 | 미연결: 읽는 선언 없음(실패) | 토큰만 있다. 소비 선언을 넣거나 토큰을 지운다 |
 | 소비 요소 0개(미검증) | 선언은 있지만 이 화면에 그 부품이 없다. 그 부품이 있는 화면에서 다시 잰다 |
 | 소비 요소 미검사 | 읽는 선언이 선택자 없는 규칙(`@keyframes` 등)이나 해석 못 한 선택자에만 있다 |
