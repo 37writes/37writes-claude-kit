@@ -1,7 +1,7 @@
 ---
 title: kit:design에 정돈 규칙(정렬·정보 예산)·예시 화면으로 고르기·정돈 점검 추가
 date: 2026-11-04
-status: approved
+status: done
 tier: T1
 ---
 
@@ -93,7 +93,8 @@ tier: T1
   - 결과: `skills/design/references/layout-discipline.md` 새로 작성(언제 읽는가 → 의무 9항 → 3열 작업 화면 권장값 → 정돈 점검(evaluate 예·기록 표) → 예시 화면으로 고르기), SKILL.md 1·2·3·5절 연결과 진단 표 1행(81줄), system.md 문서 계약 1.3.0. `claude plugin validate .` 통과, 상대 링크·앵커 35개 모두 존재, 회사 이름 grep 0. S3 F1~F3 반영(실브라우저 확인).
 - [x] S3. 독립 검증 — Codex 워커 — 새 세션에서 kit:design만 읽고 문서 적용해 본다. (A) 프로필 있는 화면의 메뉴 잘림 수정: 정돈 점검·예시 고르기가 끼어들지 않아야 한다. (B) 사용자가 두 배치 중 고르기를 요청: 비교 이미지 절차가 나와야 한다. (C) 합성 fixture 화면 넷(소개, 긴 글+목차, 계층 목록+표, 출처 있는 대화형)에 정돈 규칙을 대 보고 위계·트리·기능선이 깨지는 규칙이 없는지. 규칙끼리·system.md와 모순, 공개 레포 필터. 보고서 `.validation-design-layout.md`(커밋 안 함).
   - 결과: Codex(자기 보고 GPT-6, `task_2de2020d4ecd`·재검증 `task_c8b809e27363`) PASS_WITH_FIXES. (A)(B)·네 화면 유형·링크 45개·공개 필터 통과. 고친 것: F1 의무 1을 영역 안 같은 x / 영역 사이 기준점 대비 오프셋으로, F2 `text-left`가 박스로 대체하거나 숨긴 자식 글자를 읽던 것, F3 0.5px 군집이 DOM 순서에 의존하던 것. 고친 예제는 ego lite에서 실제로 돌려 확인(숨긴 자식 x=100 대신 보이는 글자 127.7, 패딩 자식 112, 공백뿐·0개는 미검증).
-- [ ] S4. 마무리 — 지휘 세션 — 버전·README·CLAUDE.md 결정 메모, 병합, push(프로필: 배포 아님, 다른 컴퓨터는 `/plugin update`), 완료 기록 → 기획서 삭제.
+- [x] S4. 마무리 — 지휘 세션 — 버전·README·CLAUDE.md 결정 메모, 병합, push(프로필: 배포 아님, 다른 컴퓨터는 `/plugin update`), 완료 기록 → 기획서 삭제.
+  - 결과: 0.19.0(plugin.json·marketplace.json), README 스킬 표·로드맵, CLAUDE.md 결정 메모. kit main에 병합·push(배포 아님).
 
 ## 기획 반박
 - 검토자: Codex 워커(자기 보고 GPT-6, `projection.provider.model` 없음), Task `task_0888e8499136`, Dispatch `ctx_f1f6c9683460`, 보고서 `.plan-review-design-layout.md`(커밋 안 함). 판정: 방향은 맞지만 적용 조건이 부족하다.
@@ -104,4 +105,6 @@ tier: T1
 - 기각: 없음.
 
 ## 남은 일
+- 다른 컴퓨터는 `/plugin marketplace update 37writes` → `/plugin update kit@37writes`.
+- 정돈 점검 측정 예제는 fixture에서만 실행했다. 실제 제품 화면(가상 목록·shadow DOM·RTL)에서 쓰며 고칠 점이 나오면 반영하고, 반복되면 측정 도우미로 뺀다.
 - 대상 프로젝트의 화면 작업이 끝나면 그 프로필에 이 규칙의 프로젝트 값을 고정하는 것은 그 프로젝트 세션의 일이다.
