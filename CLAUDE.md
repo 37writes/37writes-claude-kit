@@ -10,7 +10,7 @@
 - **설명**: Claude Code 플러그인 (스킬 + 훅). 맥/윈도우/리눅스 공통
 - **스택**: Markdown(SKILL.md), Python 3 (훅 스크립트, 표준 라이브러리만), POSIX sh
 - **빌드**: `claude plugin validate .`
-- **테스트**: `sh scripts/test_guard.sh`, `sh scripts/test_deploy_gate.sh`, `sh scripts/test_plans.sh`, `claude plugin test .` (스킬은 아래 "검증 방법")
+- **테스트**: `sh scripts/test_guard.sh`, `sh scripts/test_deploy_gate.sh`, `sh scripts/test_plans.sh`, `sh scripts/test_profile_check.sh`, `claude plugin test .` (스킬은 아래 "검증 방법")
 - **실행**: 이 Mac은 `~/.zshrc`의 alias `claude='claude --plugin-dir ~/Documents/dev/37writes-claude-kit'`로 항상 로드. 수정 후 Claude Code 재시작하면 반영
 - **배포**: GitHub `main` push (공개 레포). 다른 컴퓨터는 `/plugin update kit@37writes`
 - **push**: 배포 아님 (공개 레포지만 자동 배포가 없다. 다른 컴퓨터는 직접 `/plugin update`)
@@ -28,8 +28,9 @@ hooks/hooks.json                 SessionStart(이어하기·훅 설치, Orca 작
 scripts/py.sh                    python3 → python → py 순으로 실제 동작하는 Python 실행 (윈도우 스토어 스텁 회피)
 scripts/kitlib.py                공통: git 호출(utf-8), kit 레포 판정, 재개 목록 계산, JSON 출력
 scripts/plans.py                 재개 목록 CLI: 모든 worktree의 진행 중 기획서 (`[--cwd DIR] [--json] [--all]`). SessionStart·패널·harness "이어서"가 쓴다
+scripts/profile_check.py         SessionStart의 프로필 테스트 줄 재확인 알림 (`미정`·맨 "없음"인데 git ls-files 깊이 3 안에 테스트 설정, 2초 안)
 scripts/deploy_gate.py           자동 배포: `verify`(그 SHA의 임시 checkout에서 정책의 검증 명령 실행·기록) / `confirm`(같은 방식으로 정책의 확인 명령) / guard가 부르는 `push_allowed`
-scripts/test_*.sh                guard·deploy_gate·plans 테스트 (로컬 fixture, HOME 격리)
+scripts/test_*.sh                guard·deploy_gate·plans·profile_check 테스트 (로컬 fixture, HOME 격리)
 scripts/*.py                     훅과 스킬이 부르는 스크립트 (session_text.py: 대화 기록 → 텍스트, blog_coordinator.py: 블로그 코디네이터 탭 찾기, /kit:blog용 / contrast.py: 대비, shot.py: 과거 캡처 호환용; design의 ego 측정은 skills/design/scripts/)
 githooks/commit-msg              커밋 형식 검사 git 훅 (sh, Python 불필요)
 hooks/panel.tsx                  mod(함수 훅 모듈): /kit 명령과 kit 패널. hooks.json의 "modules"에 등록
@@ -54,6 +55,7 @@ types/index.d.ts                 패널의 $.state 계약 (plugin.json "types")
 - **blog 그림**: 글마다 핵심 개념 도표 1개를 직접 쓴 인라인 SVG(블로그 CSS 클래스로 색 지정 → 다크 모드 자동)로 넣고 Codex가 캡처를 보고 검수한다. 검수는 `codex exec`(화면 없음) 대신 Orca 워커 탭(`worker-start --agent codex`, 0.12부터 코디네이터가 띄움)에서 돌리고 결과는 `.blog-review.md`로 받는다 → 사용자가 검수 과정을 보고 싶어 해서 (2026-10-29). GPT 이미지 생성은 이 환경(Bedrock, OpenAI 키 없음)에서 못 써서 기본 절차에서 뺐다. 시범은 tech-blog 글 7편(2026-10-29).
 - **blog 흐름** (0.12.0): 역할 셋. 출발 세션(어느 프로젝트든)은 브리프(`~/.config/37writes-kit/blog/<slug>/brief.md`)만 쓰고, tech-blog 본체의 탭 `블로그 코디네이터`(`scripts/blog_coordinator.py`로 찾음, 없으면 `agent launch`로 띄움)에 `terminal send`로 경로를 보낸 뒤 끝난다. 터미널 행의 `title`은 에이전트가 붙이는 자동 제목이라 사용자가 정한 탭 이름과 달라서 `--include-visual-layouts`의 탭 title로 찾는다 (실측, 2026-10-29). 코디네이터는 본체 main에 머물며 한 Run에서 글마다 `worker-start --worktree new-top-level`로 글 worktree(`post-<slug>`) + 글 워커를 띄우고, `question`에 답하고(필요하면 사용자에게), `worker_done` 뒤 직접 검수(범위·빌드·필터 grep·브리프 대조) + Codex 검수 워커를 돌린다. 수정은 직접 하지 않고 retain한 글 워커 탭에 다시 dispatch한다. 사용자 승인 뒤 코디네이터가 `--ff-only` 병합·push·배포 확인·worktree와 브랜치 정리를 한다 → 예전(0.11)엔 글 worktree 에이전트가 쓰기부터 병합·자기 worktree 삭제까지 혼자 해서 지휘·검수하는 쪽이 없었다 (사용자 결정, 2026-10-29). 워커 보고서(`.blog-report.md`, `.blog-review.md`)는 `info/exclude`로 커밋 없이 무시. 발행 승인은 harness의 `gate-create`가 아니라 코디네이터 탭의 대화(AskUserQuestion)로 받는다 (사용자가 그 탭에서 직접 답하고, 승인 범위에 정리까지 넣는다). 코디네이터는 탭 이름으로 찾으므로 `agent launch --surface terminal`로 띄운다 (chat이면 handle이 없어 못 찾는다). `check --wait`는 240초로 짧게 둔다: 대기 중에는 `terminal send`로 온 새 요청과 사용자 입력이 보이지 않고, Bash 도구 한 명령은 최대 10분이다. 독립 검토(2026-10-29)에서 나온 것: 본체 세션이 코디네이터를 둘 만들 수 있음, batch 전체를 ack 전에 처리, Dispatch 종류(글·수정·검수) 기록, 정리 전 `status --porcelain`·`merge-base --is-ancestor` 확인, `rm -r`은 `${SLUG:?}`로. "블로그로 쓰자" 같은 말로도 시작해야 해서 `disable-model-invocation`을 뺐고, description은 한 줄로 유지했다. Jekyll 빌드는 worktree에 vendor/bundle이 없어서 `PATH`에 Homebrew ruby 3.4 + `BUNDLE_PATH=<본체>/vendor/bundle`로 한다 (시스템 ruby 2.6은 실패). 0.15.0: 원료는 현재 대화 → 기획서(지워졌으면 git 기록) → 커밋·diff → 검증 보고서 → 지난 대화이고 TIL은 사용자가 지정할 때만 읽는다. 브리프에 주장별 근거 표를 두고 근거 없는 주장은 `근거 부족`으로 표시해 글 워커가 사실로 쓰지 않는다. 발행 뒤 TIL 메모 발행 표시 커밋·/kit:til 제안 단계는 없앴다. 발행 승인 조건(글마다, "글 써줘"는 승인 아님)은 harness "push와 배포"에 두고 blog·README는 참조만 한다 (S2 검증 F4, 2026-10-30).
 - **push 확인** (0.13.0): 프로필의 `- **push**: 배포 아님` 줄이 있는 레포에서는 guard가 일반 `git push`를 묻지 않는다 (승인 규칙 본문은 harness "push와 배포"). guard는 강제·삭제 push(`-f`, `--force*`, `--delete`, `+ref`, `:ref`, `--mirror`, `--prune`), 그 줄이 없는 레포(배포가 되는 레포, tech-blog처럼 프로필이 없는 레포), 해석 못 한 명령(`sh -c` 안 등)은 계속 묻는다. 대상 레포는 `cd`·`git -C`를 따라가고 없으면 훅 입력의 `cwd` → 사용자가 커밋을 승인했는데 push에서 한 번 더 확인 창이 떠서 바꿨다 (사용자 결정, 2026-10-29). 키워드로 배포 여부를 추측하지 않고 프로필에 명시한 줄만 믿는다 (없으면 묻는 쪽이 안전). 0.15.0의 자동 배포는 이 위에 더한 좁은 통과 경로다 (아래 "자동 배포").
+- **프로필 값 `미정`과 `없음 (확인함)`** (0.21.0, 2026-11-11): newOpen의 테스트 줄이 "없음"인 채로 일주일 넘게 낡아 있었다 (실제로는 web·infra·Python 테스트가 다 있었다). 3개 모델 교차 검토의 원인: init은 빠진 줄만 채워서 자리표시 "없음"도 채워진 값으로 봤고, harness는 사실이 없을 때만 보완을 불렀고, "모름"과 "확인했더니 없음"이 같은 글자였고, plan은 테스트 명령이 없으면 수동 확인으로 갔고, 명령 칸이 한 줄이라 여러 폴더를 못 담았고, check가 추론한 명령을 돌려주지 않았다. 그래서 `미정`(다시 채움)·`없음 (확인함)`(덮지 않음)을 나누고, 예전 맨 "없음"은 `미정`과 같이 본다. 여러 갈래는 `폴더: 명령 · 폴더: 명령`. check는 수정 금지 단계라 `프로필 보완 후보` 한 줄만 제안하고, 채우기는 harness → init 보완. SessionStart 알림(`profile_check.py`)은 "테스트 있음"이 아니라 "재확인 필요"로 쓰고(근거는 파일 존재·scripts의 test 키 정도라 확정이 아님) 근거 경로 최대 3개, `git ls-files`라 추적 안 된 파일·node_modules·fixtures·examples는 보지 않는다. 훅 제한 10초 안에 기존 출력이 깨지지 않게 2초 budget(ls-files timeout 포함) + try/except, 재개 목록 뒤에 붙인다. 범위 밖(다음 단계): 이미 적힌 실제 명령이 낡았는지 대조, 커밋 기록 기반 감지, 프로필 자동 수정.
 - **스킬 토큰 비용**: SKILL.md의 `description`은 매 요청 컨텍스트에 들어가므로 짧게. 사용자가 직접 부르는 스킬(init, plan, release)은 `disable-model-invocation: true` (harness가 경로로 Read해서 쓴다).
 - **스킬에서 스크립트 경로**: 스킬 로드 시 "Base directory for this skill"이 주어지므로 `<base directory>/../../scripts/xxx.py`로 참조한다.
 - **사용자 보고 언어**: 한국어. 비대화(`claude -p`) 실행에서 영어로 보고한 적이 있어 일부 스킬에 명시했다.
@@ -78,7 +80,7 @@ types/index.d.ts                 패널의 $.state 계약 (plugin.json "types")
    echo '{"cwd":"<kit 레포 경로>"}' | sh scripts/py.sh scripts/session_start.py
    python3 -c 'import json,sys;print(json.dumps({"tool_input":{"command":sys.argv[1]}}))' "git push" | python3 scripts/guard.py
    ```
-   guard 규칙은 `sh scripts/test_guard.sh` (ask/통과 케이스 일괄), 자동 배포는 `sh scripts/test_deploy_gate.sh` (로컬 bare 원격 fixture: 허용, 정책 없음, 범위 밖, 검증 실패, 잘못된 SHA, 움직이는 브랜치 이름, push URL 다름, 병합 후 새 SHA, 배포 실패, 정책 변경, 기록 위조), 재개 목록은 `sh scripts/test_plans.sh` (다른 worktree, done·abandoned·기본 브랜치에서 지워짐 제외, 오래된 복사본, 충돌, 프로필 없는 레포).
+   guard 규칙은 `sh scripts/test_guard.sh` (ask/통과 케이스 일괄), 자동 배포는 `sh scripts/test_deploy_gate.sh` (로컬 bare 원격 fixture: 허용, 정책 없음, 범위 밖, 검증 실패, 잘못된 SHA, 움직이는 브랜치 이름, push URL 다름, 병합 후 새 SHA, 배포 실패, 정책 변경, 기록 위조), 재개 목록은 `sh scripts/test_plans.sh` (다른 worktree, done·abandoned·기본 브랜치에서 지워짐 제외, 오래된 복사본, 충돌, 프로필 없는 레포), 프로필 재확인 알림은 `sh scripts/test_profile_check.sh` (맨 없음·미정 + 테스트 설정 → 알림, `없음 (확인함)`·실제 명령·test 없는 scripts·프로필 없음·node_modules/examples/fixtures·깊이 초과·추적 안 됨 → 없음, 시간 초과).
 3. 스킬은 비대화 모드로 실행해 확인 (질문 단계는 못 하므로 프롬프트에 "추천값으로 진행, 커밋/push 하지 마" 등을 덧붙인다):
    ```sh
    cd ~/Documents/dev/kit_test && claude -p --plugin-dir ~/Documents/dev/37writes-claude-kit \
