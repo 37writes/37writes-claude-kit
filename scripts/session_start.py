@@ -22,6 +22,14 @@ resume = plans.text(plans.resolve(repo))
 if resume:
     lines.append(resume)
 
+try:  # 프로필 테스트 줄 재확인 (2초 안, 실패하면 조용히 건너뜀)
+    import profile_check
+    recheck = profile_check.note(repo)
+    if recheck:
+        lines.append(recheck)
+except Exception:
+    pass
+
 
 def kit_feedback(repo):
     """kit 레포 자신이면: 열린 feedback 이슈와 로컬 대기 목록을 알려준다."""

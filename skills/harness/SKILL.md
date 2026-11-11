@@ -26,7 +26,7 @@ Orca 작업 지시(Task·Dispatch ID)를 받은 워커는 이 절차를 다시 �
 | kit 개선 (다른 레포에서 "kit 이거 고치고 싶다") | 이슈만 남기고 하던 일로 | `<base directory>/../feedback/SKILL.md` |
 
 - 질문인지 작업인지 애매하면 읽기 전용 확인(코드·설정 읽기)부터 하고, 바꾸기 전에 묻는다.
-- 커밋은 `<base directory>/../commit/SKILL.md`. 작업에 필요한 사실(빌드·테스트·배포·push)이 프로필·README에 없으면 `<base directory>/../init/SKILL.md`의 보완 절차로 그 줄만 채운다. 사용자가 원하지 않으면 프로필 없이 진행한다 (push·배포는 묻는 쪽).
+- 커밋은 `<base directory>/../commit/SKILL.md`. 작업에 필요한 사실(빌드·테스트·배포·push)이 프로필·README에 없거나 프로필 값이 `미정`·맨 "없음"(`없음 (확인함)`이 아닌 것)이면 `<base directory>/../init/SKILL.md`의 보완 절차로 그 줄만 채운다. 사용자가 원하지 않으면 프로필 없이 진행한다 (push·배포는 묻는 쪽).
 - **경로로 읽을 때의 계약**: plan·init·release는 Skill 목록에 없으므로 Read로 읽는다. 읽은 SKILL.md가 있는 폴더를 그 스킬의 base directory로 써서 `<그 폴더>/../../scripts/...`를 푼다. 여기서 파악한 요청을 그 스킬의 인자로 보고 같은 질문(무엇을 만들지 등)을 다시 하지 않는다.
 
 ## 공통 규칙
