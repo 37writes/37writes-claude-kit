@@ -81,6 +81,35 @@ push가 곧 배포인 레포에서 프로필에 정책 줄을 두면, 정책 안
 - **한계**: guard는 Claude의 Bash 명령을 보는 best-effort 확인이지 권한 경계가 아니다. 검증 기록 폴더를 건드리는 명령은 묻지만, 다른 경로로 기록 파일을 고치는 것까지 막지는 못한다. 확인 명령이 HTTP 200만 보면 완료 증거가 되지 않으므로 그 SHA의 배포 실행과 핵심 기능을 확인하게 쓴다.
 - 블로그(tech-blog)는 이 정책을 쓰지 않는다 (발행 절차는 blog 스킬).
 
+## 자리 비움 모드
+
+자리를 비운 동안 위험 명령 확인 창이 에이전트를 몇 시간씩 세우지 않게 한다. 켜져 있는 동안 평소 확인 창이 뜰 명령은 창 대신 **거절**되고 아침 목록에 쌓이며, 에이전트는 다른 일을 계속한다. **권한은 하나도 넓어지지 않는다** (통과되는 명령이 늘지 않는다).
+
+```sh
+! sh <kit>/scripts/py.sh <kit>/scripts/away.py on --until 08:00   # 또는 --for 3h. 최대 12시간
+! sh <kit>/scripts/py.sh <kit>/scripts/away.py off                # 끄고 아침 목록을 보여 준다
+! sh <kit>/scripts/py.sh <kit>/scripts/away.py report             # 아침 목록 (--clear로 비움)
+```
+
+- 끝나는 시각은 필수이고, 그 시각이 지나면 스스로 꺼진 것으로 본다 (다시 평소 확인 창). 넉넉히 잡는다. 상태는 `~/.config/37writes-kit/away/` 하나라 같은 계정의 모든 레포·세션에 걸린다.
+- macOS에서는 전원 연결·뚜껑 열림을 확인하고 `caffeinate -i -s`로 유휴 잠자기를 막는다. 배터리·뚜껑 닫힘이면 켜지 않는다. **켠 뒤 뚜껑을 닫거나 전원을 뽑으면 잠든다.** 다른 OS는 절전 방지를 건너뛴다.
+- 아침 목록에는 레포, 이유, 명령(`이름=값`의 값과 시크릿 패턴을 가리고 긴 명령은 앞 150자 + 뒤 60자)이 남고, 같은 명령은 한 건으로 묶여 횟수가 보인다. 자동으로 다시 실행하지 않는다.
+- 돌아와서 일할 때 켜져 있으면 확인 창 대신 거절이 온다. 거절 이유에 끝 시각이 보이고 `off`로 끈다. 사용자의 `! 명령`은 훅을 거치지 않으므로 모드와 상관없이 실행된다.
+
+| 명령 | 끝 코드 | `--json` 출력 |
+|---|---|---|
+| `on --until HH:MM` \| `--for 3h` | 0 켬 · 2 인자 오류(`no_until` `bad_time` `too_long` `usage`) · 3 시작 거부(`on_battery` `lid_closed` `power_unknown`) · 4 `caffeinate_failed` · 1 그 밖 | status와 같은 모양 + `warnings`. 실패는 `{ok:false, error, message}` |
+| `off` | 0 (꺼져 있어도) | `{ok, was_active, caffeinate_released, queue_count}` |
+| `status` | 0 | `{ok, active, expired, until, until_epoch, remaining_seconds, started, caffeinate:{pid, alive}, power:{source, lid}, queue_count, checks}`. 꺼져 있으면 시각은 `null`, 만료면 `expired:true` |
+| `report [--clear]` | 0 | `{ok, count, items:[{key, first, last, count, repo, reasons, command}]}` |
+
+`--json`이면 오류까지 stdout에 JSON 하나만 나온다 (메뉴 막대 앱 같은 프로그램이 부르는 계약, `scripts/test_away.sh`가 고정).
+
+**한계**
+- 별도 인증이 없다. 훅과 에이전트가 같은 계정(UID)으로 돌아서 **모드를 켠 것이 사람인지 증명하지 못한다**. 그래서 모드에 권한을 주지 않았다: 에이전트가 켜도 얻는 것이 없고, 끄면 확인 창이 돌아올 뿐이다.
+- guard는 Claude의 Bash 명령을 보는 best-effort 확인이다. 스크립트 파일로 감싼 명령은 보지 못하고, 훅이 죽거나 시간을 넘기면 명령이 실행된다. 거절 뒤 다시 시도하지 않는 것은 거절 이유와 harness 규칙에 기대며, 목록의 횟수로 반복을 볼 수 있다.
+- AskUserQuestion 같은 질문 창과 답변 끝 멈춤은 막지 않는다 (다음 단계). 허용 목록으로 통과시키는 기능도 없다.
+
 ## /kit 패널
 
 `/kit`을 입력하면 kit 패널이 열리고, 한 번 더 입력하면 닫힙니다. Claude를 거치지 않으므로 토큰을 쓰지 않습니다.
@@ -97,6 +126,7 @@ push가 곧 배포인 레포에서 프로필에 정책 줄을 두면, 정책 안
 | 이어하기 | 세션 시작 (kit 프로젝트만) | "작업 요청은 kit:harness를 먼저 읽는다" 한 줄과 모든 worktree의 진행 중 기획서 목록을 Claude에게 전달, commit-msg 훅이 없으면 설치. 프로필 테스트 줄이 `미정`·맨 "없음"인데 레포에 테스트 설정(package.json scripts의 test, pyproject 등)이 있으면 재확인 알림 한 줄. kit 레포에서는 열린 feedback 이슈 표시 |
 | Orca 작업 절차 | 세션 시작 (Orca IDE 안에서만, 모든 레포) | 워커/지휘 세션 판정, 지휘 세션은 첫 요청 전에 kit:harness를 읽고, 다른 모델 의견은 Orca 워커 탭으로 |
 | 위험 명령 확인 | 명령 실행 직전 (모든 레포) | git push(프로필이 `push: 배포 아님`이면 강제·삭제 push만, 자동 배포 정책 안의 SHA push는 통과), reset --hard, rm -rf ~, DROP TABLE, AWS 삭제, cdk deploy, terraform apply, IAM 권한 변경 등은 사용자 확인 |
+| 자리 비움 알림 | 세션 시작·요청마다 (모든 레포, 모드가 켜져 있을 때) | "HH:MM까지 자리 비움 모드" 한 줄: 확인이 필요한 일은 아침 목록으로, 되돌릴 수 있는 결정은 기본값으로, 다른 일을 계속. 꺼져 있고 아침 목록이 남았으면 세션 시작 때 건수만 |
 | commit-msg (git 훅) | 모든 커밋 | 커밋 메시지 형식 검사. VS Code에서 직접 커밋해도 적용 |
 
 kit 프로젝트 = CLAUDE.md에 프로필 블록(`<!-- 37writes-kit:profile:start -->`)이 있는 git 레포. 예전에 init한 레포(`docs/devlog/`가 있음)도 호환으로 인식한다. `docs/plans/`만 있는 레포는 kit 프로젝트가 아니다. kit 프로젝트가 아니어도 "이어서 해줘"는 동작한다.
@@ -139,3 +169,4 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 - [x] 0.19.0: design에 정돈 규칙(의무와 3열 작업 화면 권장값 분리, 판단 과업을 지키는 정보 빼기), 정돈 점검(역할·선택자 측정, 0개 매칭은 미검증, 전후표), UI 선택은 예시 화면 비교 이미지로 묻기. 문서 계약 v1.3.0(CSS 자산 그대로)
 - [x] 0.20.0: design에 레퍼런스 해부(프로필로 해결 → 부분 해부 → 전체 해부, 핵심 출처 1곳부터, 여섯 축은 고르는 목록), ego 상태 관찰 계약(누름 유지·포커스 분리·선언 대 실행 중 값·빈 결과는 미검증), 해부 시트(기준 출처·평균 금지), 토큰 → 소비 선언 → 계산값 추적(미연결 토큰은 실패). 문서 계약 v1.4.0(CSS 자산 그대로)
 - [x] 0.21.0: 프로필 값 `미정`과 `없음 (확인함)` 구분, 폴더별 명령 형식(`web: … · tools: …`). init·harness·plan·check가 `미정`·맨 "없음"을 다시 채울 대상으로 보고(check는 보완 후보만 제안), SessionStart가 테스트 설정이 있는데 테스트 줄이 `미정`·맨 "없음"이면 재확인 알림(2초 안, 실패하면 건너뜀)
+- [x] 0.22.0: 자리 비움 모드 1단계. `away.py on --until HH:MM`으로 켜면 확인 창 대신 거절 + 아침 목록(권한은 그대로), macOS는 전원·뚜껑 점검 뒤 `caffeinate`, 세션 시작·요청마다 모드 알림, 메뉴 막대 앱이 부를 끝 코드·JSON 계약
