@@ -63,7 +63,7 @@ final class AwayModel: ObservableObject {
         if AwayClient.findPython() == nil { return "python3를 찾지 못했습니다" }
         guard let st = status else { return message ?? "상태를 읽는 중" }
         if st.power.source == "battery" { return "배터리로 동작 중입니다. 전원을 연결하면 시작할 수 있습니다" }
-        if st.power.lid == "closed" { return "뚜껑이 닫혀 있습니다" }
+        if st.power.lid == "closed" { return "맥북이 닫혀 있습니다. 화면을 연 채로 시작해 주세요" }
         if !chosenEnd.isAllowed(from: now) { return "끝 시각은 지금부터 12시간 안이어야 합니다" }
         return nil
     }

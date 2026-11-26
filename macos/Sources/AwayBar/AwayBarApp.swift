@@ -19,7 +19,7 @@ struct AwayBarApp: App {
         MenuBarExtra {
             PanelView(model: model)
         } label: {
-            Image(systemName: model.active ? "moon.zzz.fill" : "moon.zzz")
+            Image(systemName: model.active ? "cup.and.heat.waves.fill" : "cup.and.saucer")
             if model.active { Text(Format.remaining(model.remaining)).monospacedDigit() }
         }
         .menuBarExtraStyle(.window)

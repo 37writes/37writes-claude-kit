@@ -24,6 +24,8 @@ struct PanelView: View {
         }
         .padding(16)
         .frame(width: 340)
+        .background(PanelBackground())
+        .clipShape(RoundedRectangle(cornerRadius: PanelBackground.radius, style: .continuous))
         .onAppear { model.panelOpen = true; model.refresh() }
         .onDisappear { model.panelOpen = false }
     }
@@ -32,16 +34,11 @@ struct PanelView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: model.active ? "moon.zzz.fill" : "moon.zzz")
+            Image(systemName: model.active ? "cup.and.heat.waves.fill" : "cup.and.saucer")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(model.active ? Color.accentColor : .secondary)
             Text("자리 비움").font(.system(size: 15, weight: .semibold))
             Spacer()
-            Text(model.active ? "켜짐" : "꺼짐")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(model.active ? Color.accentColor : .secondary)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background((model.active ? Color.accentColor : Color.primary).opacity(0.12), in: Capsule())
         }
     }
 
@@ -104,10 +101,9 @@ struct PanelView: View {
     }
 
     private var powerRow: some View {
-        let p = model.status?.power
-        let source = p?.source == "ac" ? "전원 연결됨" : p?.source == "battery" ? "배터리" : "전원 확인 안 됨"
-        let lid = p?.lid == "open" ? "뚜껑 열림" : p?.lid == "closed" ? "뚜껑 닫힘" : "뚜껑 확인 안 됨"
-        return Label("\(source) · \(lid) · 그 시각까지 잠들지 않습니다", systemImage: p?.source == "ac" ? "powerplug" : "battery.50")
+        let ac = model.status?.power.source == "ac"
+        return Label(ac ? "전원 연결됨 · \(endClock)까지 맥이 잠들지 않아요" : "전원 상태를 확인하지 못했어요",
+                     systemImage: ac ? "powerplug" : "questionmark.circle")
             .font(.caption).foregroundStyle(.secondary)
     }
 
@@ -326,4 +322,61 @@ private extension View {
             .padding(10)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
     }
+}
+
+/// 패널 바탕: 시스템 메뉴처럼 뒤가 비치는 둥근 판. 상단바 창의 기본 바탕(불투명에 가까운 재질)은 걷어 낸다.
+struct PanelBackground: View {
+    static let radius: CGFloat = 16
+
+    var body: some View {
+        ZStack {
+            WindowClearer()
+            if #available(macOS 26.0, *) {
+                Color.clear.glassEffect(.regular, in: .rect(cornerRadius: Self.radius, style: .continuous))
+            } else {
+                Material(material: .menu)
+            }
+        }
+    }
+}
+
+private struct Material: NSViewRepresentable {
+    var material: NSVisualEffectView.Material
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = material; v.blendingMode = .behindWindow; v.state = .active
+        return v
+    }
+    func updateNSView(_ v: NSVisualEffectView, context: Context) {}
+}
+
+/// 창을 투명하게 하고, 우리 내용을 품지 않은 시스템 바탕 재질 뷰는 숨긴다 (품고 있으면 메뉴 재질로만 바꾼다).
+private struct WindowClearer: NSViewRepresentable {
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            DispatchQueue.main.async { [weak self] in self?.apply() }
+        }
+
+        func apply() {
+            guard let window, let root = window.contentView?.superview ?? window.contentView else { return }
+            // 우리 SwiftUI 내용을 담은 가장 바깥 뷰: 그 안의 재질 뷰(우리 바탕)는 건드리지 않는다
+            var mine: NSView = self
+            while let up = mine.superview, up !== root, !(up is NSVisualEffectView) { mine = up }
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            func walk(_ view: NSView) {
+                if view === mine { return }
+                if let fx = view as? NSVisualEffectView {
+                    if mine.isDescendant(of: fx) { fx.material = .menu; fx.state = .active } else { fx.isHidden = true }
+                }
+                view.subviews.forEach(walk)
+            }
+            walk(root)
+            window.invalidateShadow()
+        }
+    }
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ v: Probe, context: Context) { DispatchQueue.main.async { v.apply() } }
 }
