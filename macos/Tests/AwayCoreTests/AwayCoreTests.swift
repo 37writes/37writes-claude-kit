@@ -85,6 +85,8 @@ final class AwayCoreTests: XCTestCase {
         XCTAssertThrowsError(try AwayClient.decode(AwayClient.OffResult.self, from: .init(code: 0, stdout: Data(bare.utf8)))) {
             XCTAssertEqual(($0 as? AwayFailure)?.error, "failed")
         }
+        let odd = #"{"ok": false, "message": 7, "was_active": true, "caffeinate_released": true}"#
+        XCTAssertThrowsError(try AwayClient.decode(AwayClient.OffResult.self, from: .init(code: 0, stdout: Data(odd.utf8))))
         // ok 모양이어도 끝 코드가 0이 아니면 실패
         XCTAssertThrowsError(try AwayClient.decode(AwayReport.self, from: .init(code: 1, stdout: Data(#"{"ok": true, "count": 0, "items": [], "holds": [], "runs": []}"#.utf8))))
     }
