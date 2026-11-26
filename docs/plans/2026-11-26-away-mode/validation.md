@@ -119,3 +119,43 @@ chmod 500 "$A"; aw off --json; aw status --json; chmod 700 "$A"
 **F6 · 막아야 함(Windows까지 동일한 권한 비확장을 보장하려면) — F1 시간 제한의 플랫폼 공백.** 읽기 전용 확인: `rg -n 'SIGALRM|signal.alarm|away.queue_add' scripts/guard.py` 및 `rg -n '윈도우|다른 OS' README.md`. 기대: 지원 플랫폼에서 목록 기록 지연이 `deny` 전달을 막지 않는다. 실제: Windows Python에는 `SIGALRM`이 없어 4초 알람을 설치하지 않고 동기 `queue_add()`를 호출한다. 이 분기에는 별도 기록 제한 시간이 없으며 최종 `deny`는 기록 호출이 끝난 뒤 전송된다. 명시적인 `allow`가 추가된 것은 아니며, **Mac에서 고친 F1의 일부가 Windows에 남은 것**이다. Windows 실기나 호스트 시간 초과 후 명령 실행은 시험하지 않았다. 지원 범위를 유지하려면 기록 실패·지연 시에도 판정을 먼저 보장하는 대안이 필요하다.
 
 검증 종료: `git status --short`에는 이 보고서 수정만 있었고 실제 HOME의 `ls -d ~/.config/37writes-kit/away/`는 exit 1이었다. 임시 폴더는 정리했고 커밋·외부 push는 하지 않았다.
+
+## 재검증 2
+
+대상 `8267823` (`git diff 60b4b04...HEAD`). **F5·F6의 원래 재현 조건을 통과했다.** `off`의 실패 계약이 실제 JSON·상태와 일치했고, 기록 함수가 60초간 돌아오지 않도록 해도 guard는 SIGALRM 없이 4.084초 만에 거절 판정을 내고 종료했다.
+
+**F5 — `off` 실패 계약.** 새 임시 HOME에 `state.lock`과 상태 파일을 둔 뒤, 위 F5 재현의 `chmod 500 "$A"; aw off --json; aw status --json; chmod 700 "$A"`를 만료·활성 상태에서 각각 실행했다. 둘 다 `off`는 exit 1, JSON 키는 `ok,error,message`, 값은 `ok:false`, `error:state_not_removed`였다. 실제 `message`는 “상태 파일을 지우지 못했습니다 (지금 상태는 away.py status로 확인)” 뒤에 OS의 권한 오류가 붙었다. 이어서 조회한 `active/expired` 값은 각각 `false/true`, `true/false`였다. README의 `off` 행은 실패 JSON과 남아 있는 **파일**을 명시하고 현재 상태 조회를 안내하므로 두 경우 모두 맞는다.
+
+**F6 — 판정 시점뿐 아니라 guard 프로세스 종료까지 확인.** 코드에서 기록은 `Thread(..., daemon=True)` 안에서 수행하며 메인 스레드는 `join(4)` 후 `deny`를 반환한다. 기록의 성공 여부는 이유 문구만 바꾼다. 다음은 사용한 독립 대역의 핵심이다. 저장소 파일은 수정하지 않았고, 명령처럼 보이는 문자열은 셸에서 실행하지 않았다.
+
+```python
+# 격리 HOME에 유효한 상태를 둔다. python3 -c 자식에 아래 코드를 전달하고
+# stdin에는 {"tool_input":{"command":"git branch -D fixture"},"cwd":<임시 HOME>}을 넣는다.
+import runpy, signal, sys, threading
+if hasattr(signal, 'SIGALRM'):
+    del signal.SIGALRM
+sys.path.insert(0, 'scripts')
+import away
+def slow(*args):
+    print('writer-started', file=sys.stderr, flush=True)
+    threading.Event().wait(60)
+away.queue_add = slow
+runpy.run_path('scripts/guard.py', run_name='__main__')
+```
+
+부모에서 `Popen.communicate(..., timeout=15)`가 반환할 때까지 단조시계로 쟀다. **기록 대역 진입 확인, stdout JSON 1건 `deny` + 기록 실패 안내, 전체 4.084초, exit 0**. 데몬 스레드가 판정 뒤 자식 프로세스를 붙잡지 않았다. 대조군에서 같은 입력은 꺼짐 `ask`(0.056초), 정상 기록 시 `deny`(0.179초)였다. 켜진 상태의 `git status`는 무출력(0.044초)이었고 총 기록은 정상 거절 1건뿐이었다. 이 변경에서 `ask`가 `allow`나 무출력으로 바뀌는 분기는 발견하지 않았다. 이는 Mac에서 신호 기능을 제거한 동일 코드 경로의 결과이며, Windows 네이티브 실행이나 모든 종류의 OS 정지를 검증한 것은 아니다.
+
+**실제 Mac 절전 방지.** 별도 `mktemp -d` HOME에서 `sh scripts/py.sh scripts/away.py on --for 2m --json` → 반환 PID로 `ps -p "$pid" -o args=`와 `pmset -g assertions` 확인 → `sh scripts/py.sh scripts/away.py off --json` → `pmset -g assertions` 재확인. `on`은 exit 0, AC/open, PID **57444**, `alive:true`, 인자 `caffeinate -i -s -t 119`. `off`는 exit 0, `was_active:true`, `caffeinate_released:true`, `queue_count:0`이었고 이 PID의 assertion은 **2개 → 0개**였다. 두 `pmset` 조회 모두 exit 0이었다.
+
+**회귀 시험.** 실행마다 새 임시 HOME·TMPDIR을 사용했다. `test_away.sh` 5회는 서로 겹치지 않게 연속 실행했다.
+
+| 명령 | 실행 횟수 | 끝 코드 | ok / FAIL |
+|---|---:|---|---|
+| `sh scripts/test_guard.sh` | 1 | 0 | 97 / 0 |
+| `sh scripts/test_away.sh` | 5 | 0, 0, 0, 0, 0 | **매회 103 / 0** |
+| `sh scripts/test_deploy_gate.sh` | 1 | 0 | 56 / 0 |
+| `sh scripts/test_plans.sh` | 1 | 0 | 32 / 0 |
+| `sh scripts/test_profile_check.sh` | 1 | 0 | 19 / 0 |
+| `claude plugin validate .` | 1 | 0 | `ok`/`FAIL` 형식 아님. `Validation passed with warnings` |
+
+셸 시험은 중복 없는 한 세트 307건, 반복 포함 **719건 통과, 실패 0건**. 5회 내 간헐 실패는 관찰되지 않았다. 플러그인 검증의 CLAUDE.md 경고와 디렉터리 제출용 라이선스·아이콘 진단은 이전과 같았다. 이번 범위에서 남은 결함은 발견하지 않았다. 종료 시 `git diff --check` 통과, `git status --short`에는 보고서 한 파일만 표시됐고 실제 HOME의 away 경로 조회는 exit 1(없음)이었다.
