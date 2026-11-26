@@ -259,7 +259,12 @@ if sys.argv[1] == "PreToolUse":
     d["tool_input"] = {"questions": [{"question": "어느 이름으로 할까요? --token HOLD_MARKER", "header": "이름", "options": []}]}
 print(json.dumps(d))' "$1" "$2" "${3:-}" "${4:-0}" "$T" "$TR" | aw hook)
 }
-tools() { n=0; while [ $n -lt "$1" ]; do echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}' >> "$TR"; n=$((n + 1)); done; }
+tools() {  # 도구 호출 N건: 공백 없는 JSON과 공백 있는 JSON을 번갈아 쓴다 (S2 검증 F4), 글 속의 같은 글자는 세지 않는다
+  n=0; echo '{"type": "user", "message": {"content": [{"type": "tool_result", "content": "{\"type\":\"tool_use\"}"}]}}' >> "$TR"
+  while [ $n -lt "$1" ]; do
+    if [ $((n % 2)) = 0 ]; then echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}' >> "$TR"
+    else echo '{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash"}]}}' >> "$TR"; fi
+    n=$((n + 1)); done; }
 ASK='설정을 마쳤습니다. 이름은 a와 b 중 어느 쪽으로 할까요?'
 hook Stop s1 "$ASK"; [ -z "$OUT" ] && ok "꺼져 있으면 Stop 통과" || no "꺼져 있는데 Stop 출력" "$OUT"
 hook PreToolUse s1; [ -z "$OUT" ] && ok "꺼져 있으면 질문 창 그대로" || no "꺼져 있는데 질문 거절" "$OUT"

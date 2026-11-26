@@ -254,6 +254,14 @@ def mask_text(text, limit=300):
     return text if len(text) <= limit else "… " + text[-limit:]
 
 
+def mask_log(text):
+    """로그에 쓸 여러 줄 글: 줄바꿈은 두고 값만 가린다."""
+    text = str(text)
+    for pattern, repl in MASKS:
+        text = pattern.sub(repl, text)
+    return text
+
+
 def append_line(path, obj):
     """JSON 한 줄을 잠금 없이 O_APPEND로 덧붙인다 (훅이 기다리지 않게).
     일반 파일이 아니면(FIFO·장치·심볼릭 링크) 열다가 멈출 수 있어 비차단으로 열고 거부한다."""
@@ -381,7 +389,7 @@ def parse_ticket(spec, n):
     tests, why = profile_tests(root)
     if tests is None:
         raise Fail(2, "bad_ticket", f"{root}: {why}")
-    return {"id": f"t{n}", "repo": root, "repo_key": repo_key(path), "stack": parts[1], "limit": limit, "used": 0,
+    return {"id": f"t{n}-{os.urandom(4).hex()}", "repo": root, "repo_key": repo_key(path), "stack": parts[1], "limit": limit, "used": 0,
             "locked": False, "note": "", "tests": tests, "tests_note": why}
 
 
@@ -391,7 +399,7 @@ def tickets_of(st):
 
 def ticket_view(t):
     return {"id": t.get("id"), "repo": t.get("repo"), "stack": t.get("stack"), "limit": t.get("limit"), "used": t.get("used"),
-            "locked": bool(t.get("locked")), "note": t.get("note") or "", "tests": [x.get("cmd") for x in t.get("tests") or []]}
+            "locked": bool(t.get("locked")), "note": t.get("note") or "", "tests": [mask_text(x.get("cmd", ""), 200) for x in t.get("tests") or []]}
 
 
 CDK_DEPLOY = re.compile(r"\bcdk\b[^;&|]*?\bdeploy\s+([A-Za-z][A-Za-z0-9-]*)")
@@ -529,13 +537,23 @@ def orca_worker():
 
 
 def tool_calls_since(path, offset):
-    """대화 기록의 offset 뒤에 있는 도구 호출 수. 못 읽으면 0."""
+    """대화 기록의 offset 뒤에 있는 도구 호출 수 (JSONL을 읽어 assistant 내용의 tool_use를 센다). 못 읽으면 0."""
     try:
         with open(path, "rb") as f:
             f.seek(max(0, int(offset or 0)))
-            return f.read(8 * 1024 * 1024).count(b'"type":"tool_use"')
+            data = f.read(8 * 1024 * 1024)
     except (OSError, TypeError, ValueError):
         return 0
+    count = 0
+    for line in data.splitlines():
+        try:
+            row = json.loads(line)
+            content = (row.get("message") or {}).get("content") if isinstance(row, dict) else None
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(content, list):
+            count += sum(1 for c in content if isinstance(c, dict) and c.get("type") == "tool_use")
+    return count
 
 
 def file_size(path):

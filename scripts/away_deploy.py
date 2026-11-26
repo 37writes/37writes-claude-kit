@@ -33,9 +33,12 @@ DANGER = [
 ]
 
 
-def find_ticket(st, key, stack):
+def find_ticket(st, key, stack, issued=None):
+    """issued=(회차 id, 티켓 id)를 주면 처음 검사한 그 발급 건만 찾는다 (검사 중에 끄고 다시 낸 티켓은 다른 건)."""
     for t in away.tickets_of(st):
         if t.get("repo_key") == key and t.get("stack") == stack:
+            if issued and (st.get("id"), t.get("id")) != issued:
+                return None
             return t
     return None
 
@@ -52,12 +55,36 @@ def run_logged(args, cwd, log, timeout, shell=False):
     except OSError as e:
         code, out = None, f"[실행 실패: {e}]"
     with open(log, "a", encoding="utf-8") as f:
-        f.write(f"\n$ {args if isinstance(args, str) else ' '.join(args)}  (cwd {cwd})\n{out}\n[끝 코드 {code}]\n")
+        f.write(away.mask_log(f"\n$ {args if isinstance(args, str) else ' '.join(args)}  (cwd {cwd})\n{out}\n[끝 코드 {code}]\n"))
     return code, out
 
 
+SECTIONS = {"Resources", "Parameters", "Outputs", "Conditions", "Mappings", "Metadata", "Other Changes", "Template"}
+HEADER = re.compile(r"[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,3}")
+CHANGE = re.compile(r"\[([^\]]*)\]\s*(\S*)")
+KINDS = re.compile(r"(AWS|Custom|Alexa)::\S+|Parameter|Output|Condition|Mapping|Metadata")
+
+
+def unread_lines(out):
+    """해석하지 못한 줄: 맨 앞에서 시작하는 변경 표식·섹션 제목 중 아는 모양이 아닌 것 (하위 속성 줄은 보지 않는다)."""
+    bad = []
+    for line in out.splitlines():
+        if not line or line[0].isspace():
+            continue
+        m = CHANGE.match(line)
+        if m:
+            mark, kind = m.group(1), m.group(2)
+            if mark.startswith(("Warning", "Info")) or (mark in ("+", "~") and KINDS.fullmatch(kind)):
+                continue
+            bad.append(line)
+        elif HEADER.fullmatch(line.strip()) and line.strip() not in SECTIONS and not re.fullmatch(r"Stack \S+", line.strip()):
+            bad.append(line)
+    return bad
+
+
 def inspect_diff(out):
-    """(판정, 설명, {added, changed}). 판정: ok | none(변경 없음) | danger | unknown(형식을 모름)."""
+    """(판정, 설명, {added, changed}). 판정: ok | none(변경 없음) | danger | unknown(형식을 모름).
+    위험 패턴이 없어도 해석하지 못한 변경 줄·섹션이 하나라도 있으면 unknown이다 (아는 줄이 섞여 있어도)."""
     counts = {"added": len(re.findall(r"^\s*\[\+\]", out, re.M)), "changed": len(re.findall(r"^\s*\[~\]", out, re.M))}
     found = []
     for pattern, name in DANGER:
@@ -65,6 +92,9 @@ def inspect_diff(out):
             found.append(name)
     if found:
         return "danger", ", ".join(found), counts
+    bad = unread_lines(out)
+    if bad:
+        return "unknown", f"cdk diff에 해석하지 못한 줄이 있습니다: {away.mask_text(bad[0], 80)}", counts
     if counts["added"] or counts["changed"]:
         return "ok", f"추가 {counts['added']}, 수정 {counts['changed']}", counts
     if NO_CHANGES.search(out):
@@ -117,6 +147,7 @@ def cmd_run(args):
             except Exception:
                 pass
         return finish("refused", 3, why, args, root if st else None, [{"name": "티켓", "ok": False, "detail": why}])
+    issued = (st.get("id"), ticket.get("id"))
     steps.append({"name": "티켓", "ok": True, "detail": f"{ticket['used'] + 1}/{ticket['limit']}회째"})
 
     os.makedirs(away.LOGS, mode=0o700, exist_ok=True)
@@ -130,9 +161,10 @@ def cmd_run(args):
     for test in tests:
         where = os.path.join(root, test.get("dir") or ".")
         code, _ = run_logged(test["cmd"], where, log, TEST_TIMEOUT, shell=True)
-        steps.append({"name": "테스트", "ok": code == 0, "detail": f"{test['cmd']} → {'시간 초과·실행 실패' if code is None else code}"})
+        shown = away.mask_text(test["cmd"], 200)
+        steps.append({"name": "테스트", "ok": code == 0, "detail": f"{shown} → {'시간 초과·실행 실패' if code is None else code}"})
         if code != 0:
-            return finish("blocked", 4, f"테스트 실패로 배포하지 않았습니다: {test['cmd']}", args, root, steps, log=log)
+            return finish("blocked", 4, f"테스트 실패로 배포하지 않았습니다: {shown}", args, root, steps, log=log)
 
     # 2. 변경 검사
     code, out = run_logged(CDK + ["diff", args.stack, "--exclusively"], cwd, log, DIFF_TIMEOUT)
@@ -150,7 +182,7 @@ def cmd_run(args):
     # 3. 횟수를 먼저 소비한 뒤 배포 1회 (두 탭이 동시에 불러도 한 번만)
     with away.state_lock():
         st = away.active()
-        ticket = find_ticket(st, key, args.stack)
+        ticket = find_ticket(st, key, args.stack, issued)
         if not ticket or ticket.get("locked") or ticket.get("used", 0) >= ticket.get("limit", 0):
             steps.append({"name": "티켓", "ok": False, "detail": "검사하는 동안 만료·소진·잠김"})
             return finish("refused", 3, "검사하는 동안 티켓이 만료되었거나 다른 실행이 사용했습니다. 배포하지 않았습니다", args, root, steps, counts, log)
@@ -160,7 +192,7 @@ def cmd_run(args):
     if code != 0:
         with away.state_lock():
             st = away.load_state()
-            ticket = find_ticket(st, key, args.stack)
+            ticket = find_ticket(st, key, args.stack, issued)
             if ticket:
                 ticket["locked"] = True
                 ticket["note"] = "배포 실패로 잠김"

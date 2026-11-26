@@ -150,6 +150,36 @@ fresh --ticket "$R::Demo"; touch "$FAKE/deploy_sleep"
 dp run --stack Demo --cwd "$R/infra" >/dev/null 2>&1 & dp run --stack Demo --cwd "$T/wt/infra" >/dev/null 2>&1 & wait
 [ "$(deploys)" = 1 ] && ok "동시에 두 번 불러도 배포 1회" || no "동시 실행 배포 수: $(deploys)"
 
+# ── S2+S3 검증(F1~F3): 발급 건 대조, 섞인 diff, 값 가림 ──
+# F1: 검사하는 동안 끄고 같은 대상에 새 티켓을 내면 이전 검사로 새 티켓을 쓰지 않는다
+fresh --ticket "$R::Demo"
+printf 'sleep 2; exit 0\n' > "$R/t.sh"
+dp run --stack Demo --cwd "$R/infra" --json > "$T/f1.out" 2>/dev/null & F1=$!
+sleep 0.7; aw off >/dev/null 2>&1; aw on --for 1h --ticket "$R::Demo" >/dev/null
+wait $F1; got=$?
+printf 'touch ran; exit "$(cat code 2>/dev/null || echo 0)"\n' > "$R/t.sh"
+[ "$got" = 3 ] && ok "재발급된 티켓: 이전 검사는 거절 (끝 코드 3)" || no "재발급 뒤 끝 코드 $got" "$(cat "$T/f1.out")"
+[ "$(deploys)" = 0 ] && ok "재발급된 티켓: 배포 0회" || no "재발급된 티켓으로 배포됨"
+expect "새 티켓 횟수 그대로·잠기지 않음" "$(aw status --json)" 'd["tickets"][0]["used"] == 0 and not d["tickets"][0]["locked"]'
+# F2: 아는 변경 줄과 모르는 변경 줄이 섞이면 배포하지 않는다
+for line in '[*] AWS::SQS::Queue Odd Odd1' '[~] Something Else X' 'Strange Changes' '[+] Unknown thing'; do
+  fresh --ticket "$R::Demo"
+  printf 'Stack Demo\nResources\n[+] AWS::SQS::Queue Q Q123\n%s\n' "$line" > "$FAKE/diff"
+  code "섞인 diff: $line" 4 dp run --stack Demo --cwd "$R/infra" --json
+  [ "$(deploys)" = 0 ] && ok "섞인 diff: 배포 0회" || no "섞인 diff인데 배포됨: $line"
+done
+fresh --ticket "$R::Demo"
+printf '[Warning at /Demo/Fn] deprecated\nStack Demo\nParameters\n[+] Parameter BootstrapVersion BootstrapVersion: {"Type":"String"}\nResources\n[~] AWS::Lambda::Function Fn FnABC\n └─ [~] Code\n     ├─ [-] old\n     └─ [+] new\nOutputs\n[+] Output Url Url: {"Value":"x"}\n\n✨  Number of stacks with differences: 1\n' > "$FAKE/diff"
+code "경고·매개변수·출력·하위 속성 줄이 있는 정상 diff" 0 dp run --stack Demo --cwd "$R/infra" --json
+# F3: 테스트 명령의 값이 실행 기록·보고·로그·상태에 남지 않는다
+printf -- '- **테스트**: `DEMO=RUN_MARKER sh t.sh`\n' > "$R/CLAUDE.md"; echo 1 > "$R/code"
+fresh --ticket "$R::Demo"
+code "값이 든 테스트 명령 실패" 4 dp run --stack Demo --cwd "$R/infra" --json
+if printf '%s' "$OUT" | grep -q RUN_MARKER || grep -rq RUN_MARKER "$A/runs.jsonl" "$A/logs" || aw report --json | grep -q RUN_MARKER || aw report | grep -q RUN_MARKER || aw status --json | grep -q RUN_MARKER; then
+  no "테스트 명령의 값이 남음"; else ok "출력·runs·로그·report·status에 RUN_MARKER 없음"; fi
+[ -f "$R/ran" ] && ok "가려도 실제 명령은 그대로 실행" || no "테스트가 실행되지 않음"
+printf -- '- **테스트**: `sh t.sh`\n' > "$R/CLAUDE.md"; rm -f "$R/code"
+
 # ── 후보 (권한 아님) ──
 fresh
 code "request" 0 aw request --stack Demo --note "가입 시험에 필요 --token REQ_MARKER" --cwd "$R/infra" --json
