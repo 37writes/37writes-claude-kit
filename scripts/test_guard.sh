@@ -66,6 +66,77 @@ check ask 'env -u X FOO=1 ./deploy.sh'
 check ask 'time ./deploy.sh'
 check ask 'nohup ./deploy.sh &'
 check none 'bash -c "./deploy.sh --diff"'
+# ── 글 속의 단어는 명령이 아니다 (오탐 → none) ──
+check none 'git commit -m "cdk deploy 수정"'
+check none 'git commit -m "제목
+./deploy.sh 수정
+terraform apply 설명"'
+check none "git commit -m 'git push --force 설명, git reset --hard 주의'"
+check none 'git -C /tmp/x commit -m "aws iam put-role-policy 정리"'
+check none 'cat > note.md <<EOF
+밤에 cdk deploy ShiP1Tools 확인 창에서 멈췄다.
+DROP TABLE users;
+EOF'
+check none "cat <<'EOF' >> docs/plan.md
+- terraform destroy 금지
+- git push --force 금지
+EOF"
+check none 'echo "cdk deploy는 사용자가 실행"'
+check none 'printf "%s\n" "amplify publish 안내"'
+check none 'grep -rn "cdk deploy" docs'
+check none 'rg "terraform apply" -l | head -5'
+check none 'gh issue create --title "cdk deploy 오탐" --body "git reset --hard 도 같이"'
+check none 'git log --grep "cdk destroy" | cat'
+check none 'echo "rm -rf ~ 는 위험"'
+check none 'git commit -m "37writes-kit/away 폴더 보호 설명"'
+check none 'echo done # cdk deploy 는 나중에'
+check none 'cdk diff Demo'
+check none 'cdk synth && cdk ls'
+check none 'terraform plan -out tf.plan'
+# ── 글자가 실행되는 경우는 그대로 본다 (미탐 방지 → ask) ──
+check ask 'cdk deploy Demo'
+check ask 'npx cdk --profile prod deploy ShiP1Agent'
+check ask 'terraform -chdir=infra apply -auto-approve'
+check ask '(cd infra && cdk deploy StackA)'
+check ask '(cd infra && ./deploy.sh)'
+check ask 'echo "$(./deploy.sh)"'
+check ask 'x=`./deploy.sh`'
+check ask 'printf "%s" "$(cdk deploy Demo)"'
+check ask 'git commit -m "$(cdk deploy Demo)"'
+check ask "sh <<'EOF'
+cdk deploy Demo
+EOF"
+check ask 'bash <<EOF
+cd infra
+./deploy.sh
+EOF'
+check ask "sh -c 'cdk deploy Demo'"
+check ask 'bash -c "echo \"go\" && ./deploy.sh"'
+check ask "printf 'cdk deploy Demo\n' | sh"
+check ask 'cat <<EOF | bash
+cdk deploy Demo
+EOF'
+check ask "echo './deploy.sh' | sh"
+check ask 'echo "cdk deploy Demo" | xargs -I{} sh -c {}'
+check ask 'psql -c "DROP TABLE users;"'
+check ask 'psql <<EOF
+drop table users;
+EOF'
+check ask 'python3 -c "import os; os.system(\"cdk deploy Demo\")"'
+check ask 'eval "cdk deploy Demo"'
+check ask 'eval "./deploy.sh"'
+check ask 'bash <<< "./deploy.sh"'
+check ask 'if true; then cdk deploy Demo; fi'
+check ask 'for s in A B; do ./deploy.sh $s; done'
+check ask '{ ./deploy.sh; }'
+check ask 'echo ok; (rm -rf ~)'
+check ask 'echo "$(rm -rf ~/)"'
+check ask 'orca terminal send --text "cdk deploy Demo"'
+check ask 'echo "{}" > ~/.config/37writes-kit/away/state.json'
+check ask 'printf x | tee ~/.config/37writes-kit/away/state.json'
+# 해석하지 못하면(닫히지 않은 따옴표) 예전처럼 원문 전체를 검사한다
+check ask 'git commit -m "cdk deploy 수정'
+check ask "echo 'unterminated && ./deploy.sh"
 # 자동 배포 검증 기록은 deploy_gate.py로만 (자세한 push 판정은 test_deploy_gate.sh)
 check ask 'echo "{}" > .git/37writes-kit/deploy/x.json'
 check ask 'cd .git && rm 37writes-kit/deploy/x.json'
