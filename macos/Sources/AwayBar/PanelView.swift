@@ -332,13 +332,12 @@ struct PanelBackground: View {
 
     var body: some View {
         ZStack {
-            WindowClearer()
+            // 창 뒤를 흐리는 재질을 둥근 모양으로 (창 자체는 투명하다)
+            Material(material: .menu, radius: Self.radius)
             if #available(macOS 26.0, *) {
                 // 맑은 유리 + 글자가 읽히게 옅은 바탕색
                 Color(nsColor: .windowBackgroundColor).opacity(0.22)
                     .glassEffect(.clear, in: .rect(cornerRadius: Self.radius, style: .continuous))
-            } else {
-                Material(material: .menu)
             }
         }
     }
@@ -346,47 +345,22 @@ struct PanelBackground: View {
 
 private struct Material: NSViewRepresentable {
     var material: NSVisualEffectView.Material
+    var radius: CGFloat
+
     func makeNSView(context: Context) -> NSVisualEffectView {
         let v = NSVisualEffectView()
         v.material = material; v.blendingMode = .behindWindow; v.state = .active
+        // 창 뒤 흐림은 layer 모서리로 잘리지 않는다 → 늘어나는 둥근 마스크 그림으로 자른다
+        let r = radius, side = r * 2 + 1
+        let mask = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: r, yRadius: r).fill()
+            return true
+        }
+        mask.capInsets = NSEdgeInsets(top: r, left: r, bottom: r, right: r)
+        mask.resizingMode = .stretch
+        v.maskImage = mask
         return v
     }
     func updateNSView(_ v: NSVisualEffectView, context: Context) {}
-}
-
-/// 창을 투명하게 하고, 우리 내용을 품지 않은 시스템 바탕 재질 뷰는 숨긴다 (품고 있으면 메뉴 재질로만 바꾼다).
-private struct WindowClearer: NSViewRepresentable {
-    final class Probe: NSView {
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            DispatchQueue.main.async { [weak self] in self?.apply() }
-        }
-
-        func apply() {
-            guard let window, let root = window.contentView?.superview ?? window.contentView else { return }
-            // 우리 SwiftUI 내용을 담은 가장 바깥 뷰: 그 안의 재질 뷰(우리 바탕)는 건드리지 않는다
-            var mine: NSView = self
-            while let up = mine.superview, up !== root, !(up is NSVisualEffectView) { mine = up }
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            func walk(_ view: NSView) {
-                if view === mine { return }
-                if let fx = view as? NSVisualEffectView {
-                    if mine.isDescendant(of: fx) { fx.material = .menu; fx.state = .active } else { fx.isHidden = true }
-                }
-                view.subviews.forEach(walk)
-            }
-            walk(root)
-            // 창 그림자는 네모난 창 모양을 따라 테두리처럼 보인다 → 끈다. 남은 테두리 선도 지운다
-            window.hasShadow = false
-            func strip(_ view: NSView) {
-                if !view.isDescendant(of: mine) { view.layer?.borderWidth = 0 }
-                if view !== mine { view.subviews.forEach(strip) }
-            }
-            strip(root)
-        }
-    }
-
-    func makeNSView(context: Context) -> Probe { Probe() }
-    func updateNSView(_ v: Probe, context: Context) { DispatchQueue.main.async { v.apply() } }
 }
