@@ -1,11 +1,14 @@
 """자리 비움(연속 작업) 모드: 사용자가 없는 동안 guard의 확인 창(ask)을 거절(deny) + 아침 목록으로 바꾼다.
 
-권한은 하나도 넓히지 않는다. 사용자가 `!`로 켠다:
+사용자가 `!`나 메뉴 막대 앱으로 켠다:
     away.py on --until HH:MM | --for 3h [--json]
     away.py off [--json]
     away.py status [--json]
+    away.py on ... --ticket '<레포 경로>::<스택>[::횟수]'   (배포 티켓. 사용자만. 실행은 away_deploy.py)
+    away.py request --stack <스택> [--note 글] [--cwd 폴더]   (에이전트가 티켓 후보를 적음. 권한 아님)
     away.py report [--json] [--clear]
-    away.py hook            (SessionStart·UserPromptSubmit 훅, stdin = 훅 입력)
+    away.py hook            (SessionStart·UserPromptSubmit·PreToolUse(AskUserQuestion)·Stop 훅, stdin = 훅 입력)
+켜져 있는 동안: 질문 창은 거절 + 보류 목록, 글로 묻고 끝낸 턴은 조건이 맞으면 최대 2번 이어 가게 한다.
 끝 코드: 0 성공, 1 예상 밖 오류, 2 인자 오류, 3 시작 점검 거부, 4 절전 방지 시작 실패.
 guard.py가 active()·queue_add()를 import해서 쓴다. 같은 계정(HOME)의 모든 레포·세션이 상태 하나를 본다.
 """
@@ -27,6 +30,16 @@ DIR = os.path.join(kitlib.CONFIG_DIR, "away")
 STATE = os.path.join(DIR, "state.json")
 QUEUE = os.path.join(DIR, "queue.jsonl")
 LOCK = os.path.join(DIR, "state.lock")
+HOLDS = os.path.join(DIR, "holds.jsonl")
+SESSIONS = os.path.join(DIR, "sessions")
+REQUESTS = os.path.join(DIR, "requests.jsonl")
+RUNS = os.path.join(DIR, "runs.jsonl")
+LOGS = os.path.join(DIR, "logs")
+MAX_TICKET_USES = 3
+STACK_NAME = re.compile(r"[A-Za-z][A-Za-z0-9-]{0,127}")
+MAX_BLOCKS = 2        # 한 회차(사용자 입력 사이)에 턴 종료를 이어 가게 하는 횟수
+PROGRESS_TOOLS = 3    # 두 번째 재개 전에 필요한 도구 호출 수 (헛도는 재개 방지)
+SESSION_KEEP = 2 * 86400
 MAX_SECONDS = 12 * 3600
 DISK_WARN_BYTES = 5 * 1024 ** 3
 LID_NOTE = "뚜껑을 닫으면 잠듭니다 (전원 연결·뚜껑 열림 동안만 절전을 막습니다)"
@@ -233,22 +246,52 @@ def mask(command):
     return text if len(text) <= 220 else text[:150] + " … " + text[-60:]
 
 
-def queue_add(repo, reasons, command, session=None):
-    """거절한 명령 한 줄을 덧붙인다. 잠금 없이 O_APPEND 한 번 (guard가 기다리지 않게). 중복은 report가 묶는다.
+def mask_text(text, limit=300):
+    """보류 목록에 남길 글(질문 요지): 가림은 mask와 같고 끝부분 limit자만 남긴다 (질문은 보통 끝에 있다)."""
+    text = " ".join(str(text).split())
+    for pattern, repl in MASKS:
+        text = pattern.sub(repl, text)
+    return text if len(text) <= limit else "… " + text[-limit:]
+
+
+def append_line(path, obj):
+    """JSON 한 줄을 잠금 없이 O_APPEND로 덧붙인다 (훅이 기다리지 않게).
     일반 파일이 아니면(FIFO·장치·심볼릭 링크) 열다가 멈출 수 있어 비차단으로 열고 거부한다."""
     import stat
     ensure_dir()
-    key = hashlib.sha256((repo + "\0" + " ".join(command.split())).encode("utf-8")).hexdigest()[:16]
-    line = json.dumps({"key": key, "ts": int(time.time()), "repo": repo, "reasons": list(reasons),
-                       "command": mask(command), "session": session}, ensure_ascii=False) + "\n"
+    line = json.dumps(obj, ensure_ascii=False) + "\n"
     flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(QUEUE, flags, 0o600)
+    fd = os.open(path, flags, 0o600)
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise OSError("아침 목록이 일반 파일이 아닙니다")
+            raise OSError("목록이 일반 파일이 아닙니다")
         os.write(fd, line.encode("utf-8"))
     finally:
         os.close(fd)
+
+
+def read_lines(path):
+    """jsonl의 dict 줄들. 못 읽거나 깨진 줄은 건너뛴다."""
+    rows = []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+    except OSError:
+        pass
+    return rows
+
+
+def queue_add(repo, reasons, command, session=None):
+    """거절한 명령 한 줄을 덧붙인다 (append_line). 중복은 report가 묶는다."""
+    key = hashlib.sha256((repo + "\0" + " ".join(command.split())).encode("utf-8")).hexdigest()[:16]
+    append_line(QUEUE, {"key": key, "ts": int(time.time()), "repo": repo, "reasons": list(reasons),
+                        "command": mask(command), "session": session})
     return key
 
 
@@ -273,6 +316,277 @@ def queue_items():
             items[key] = {"key": key, "first": iso(ts), "last": iso(ts), "count": 1, "repo": str(row.get("repo", "")),
                           "reasons": row.get("reasons") or [], "command": str(row.get("command", ""))}
     return list(items.values())
+
+
+def hold_items():
+    """보류된 질문: {ts, kind(question|stop), repo, session, text}. 같은 세션의 같은 글은 한 건."""
+    items, seen = [], set()
+    for row in read_lines(HOLDS):
+        try:
+            item = {"ts": iso(int(row["ts"])), "kind": str(row.get("kind", "")), "repo": str(row.get("repo", "")),
+                    "session": str(row.get("session", "")), "text": str(row.get("text", ""))}
+        except (KeyError, ValueError, TypeError, OverflowError, OSError):
+            continue
+        key = (item["session"], item["kind"], item["text"])
+        if key not in seen:
+            seen.add(key)
+            items.append(item)
+    return items
+
+
+# ── 배포 티켓 ────────────────────────────────────────────────────────
+
+def repo_key(path):
+    """레포를 가리키는 키: 공통 git 폴더의 실제 경로 (worktree가 달라도 같은 레포면 같다). git이 아니면 폴더 경로."""
+    common = kitlib.git(path, "rev-parse", "--path-format=absolute", "--git-common-dir", timeout=3)
+    return os.path.realpath(common or path)
+
+
+def profile_tests(root):
+    """프로필 `- **테스트**:` 줄의 명령. (명령 목록 [{dir, cmd}], 설명). 줄이 없거나 미정·없음이면 ([], 이유),
+    글만 있고 백틱 명령이 없으면 (None, 이유) → 티켓을 만들지 않는다."""
+    text = kitlib.read(os.path.join(root, "CLAUDE.md")) if os.path.exists(os.path.join(root, "CLAUDE.md")) else ""
+    m = re.search(r"^- \*\*테스트\*\*:[ \t]*(.*)$", text or "", re.M)
+    if not m:
+        return [], "프로필에 테스트 줄 없음"
+    value = m.group(1).strip()
+    if not value or value.startswith(("미정", "없음")):
+        return [], "테스트 없음 (프로필: %s)" % (value or "빈 값")
+    tests = []
+    for part in re.split(r"\s+·\s+", value):
+        folder = re.match(r"([\w./-]+):\s", part)
+        for cmd in re.findall(r"`([^`]+)`", part):
+            tests.append({"dir": folder.group(1) if folder else ".", "cmd": cmd})
+    if not tests:
+        return None, "프로필 테스트 줄에서 명령을 읽지 못했습니다 (명령을 `백틱`으로 감싸 적으세요)"
+    return tests, "%d개" % len(tests)
+
+
+def parse_ticket(spec, n):
+    parts = spec.split("::")
+    if len(parts) not in (2, 3) or not parts[0] or not parts[1]:
+        raise Fail(2, "bad_ticket", f"--ticket은 '<레포 경로>::<스택>[::횟수]' 형식입니다 (받은 값: {spec})")
+    path = os.path.realpath(os.path.expanduser(parts[0]))
+    if not os.path.isdir(path):
+        raise Fail(2, "bad_ticket", f"티켓의 레포 폴더가 없습니다: {parts[0]}")
+    if not STACK_NAME.fullmatch(parts[1]):
+        raise Fail(2, "bad_ticket", f"스택 이름이 올바르지 않습니다 (영문자로 시작, 영문·숫자·-): {parts[1]}")
+    try:
+        limit = int(parts[2]) if len(parts) == 3 else 1
+    except ValueError:
+        limit = 0
+    if not 1 <= limit <= MAX_TICKET_USES:
+        raise Fail(2, "bad_ticket", f"티켓 횟수는 1~{MAX_TICKET_USES}입니다 (받은 값: {parts[2]})")
+    root = kitlib.git(path, "rev-parse", "--show-toplevel", timeout=3) or path
+    tests, why = profile_tests(root)
+    if tests is None:
+        raise Fail(2, "bad_ticket", f"{root}: {why}")
+    return {"id": f"t{n}", "repo": root, "repo_key": repo_key(path), "stack": parts[1], "limit": limit, "used": 0,
+            "locked": False, "note": "", "tests": tests, "tests_note": why}
+
+
+def tickets_of(st):
+    return [t for t in (st.get("tickets") or []) if isinstance(t, dict)] if st else []
+
+
+def ticket_view(t):
+    return {"id": t.get("id"), "repo": t.get("repo"), "stack": t.get("stack"), "limit": t.get("limit"), "used": t.get("used"),
+            "locked": bool(t.get("locked")), "note": t.get("note") or "", "tests": [x.get("cmd") for x in t.get("tests") or []]}
+
+
+CDK_DEPLOY = re.compile(r"\bcdk\b[^;&|]*?\bdeploy\s+([A-Za-z][A-Za-z0-9-]*)")
+
+
+def ticket_candidates():
+    """앱이 체크박스로 보여 줄 후보: 에이전트의 request와 아침 목록의 거절된 cdk deploy. 권한이 아니다."""
+    found = {}
+    for row in read_lines(REQUESTS):
+        repo, stack = str(row.get("repo", "")), str(row.get("stack", ""))
+        if repo and STACK_NAME.fullmatch(stack):
+            found[(repo, stack)] = {"repo": repo, "stack": stack, "source": "request", "note": str(row.get("note", ""))}
+    for it in queue_items():
+        for stack in CDK_DEPLOY.findall(it["command"]):
+            found.setdefault((it["repo"], stack), {"repo": it["repo"], "stack": stack, "source": "queue", "note": ""})
+    return list(found.values())[:20]
+
+
+def run_items():
+    """티켓으로 실행한(또는 막힌) 배포 기록: {ts, repo, stack, result, code, steps, diff, log}."""
+    items = []
+    for row in read_lines(RUNS):
+        try:
+            items.append({"ts": iso(int(row["ts"])), "repo": str(row.get("repo", "")), "stack": str(row.get("stack", "")),
+                          "result": str(row.get("result", "")), "code": row.get("code"), "steps": row.get("steps") or [],
+                          "diff": row.get("diff") or {}, "log": row.get("log")})
+        except (KeyError, ValueError, TypeError, OverflowError, OSError):
+            continue
+    return items
+
+
+# ── 세션 기록 ────────────────────────────────────────────────────────
+
+def session_path(session_id):
+    name = re.sub(r"[^\w.-]", "_", str(session_id or ""))[:80].strip(".")
+    return os.path.join(SESSIONS, name + ".json") if name else None
+
+
+def load_session(session_id):
+    path = session_path(session_id)
+    try:
+        with open(path, encoding="utf-8") as f:
+            rec = json.load(f)
+        return rec if isinstance(rec, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def save_session(rec):
+    path = session_path(rec.get("session"))
+    if not path:
+        return
+    os.makedirs(SESSIONS, mode=0o700, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(rec, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def repo_of(cwd):
+    try:
+        return kitlib.git(cwd, "rev-parse", "--show-toplevel", timeout=2) or cwd
+    except Exception:
+        return cwd
+
+
+def touch_session(data, event, st, **changes):
+    """세션 기록을 갱신해 돌려준다. 자리 비움 회차(state id)가 바뀌었으면 재개 횟수를 0으로."""
+    sid = data.get("session_id")
+    if not session_path(sid):
+        return {}
+    rec = load_session(sid)
+    cwd = data.get("cwd") or rec.get("cwd") or ""
+    state_id = st.get("id") if st else None
+    if rec.get("state_id") != state_id:
+        rec.update(blocks=0, block_size=0)
+    rec.update(session=str(sid), cwd=cwd, transcript=data.get("transcript_path") or rec.get("transcript"),
+               last_event=event, last_event_ts=int(time.time()), state_id=state_id)
+    if rec.get("repo_cwd") != cwd:
+        rec.update(repo=repo_of(cwd) if cwd else "", repo_cwd=cwd)
+    rec.update(changes)
+    save_session(rec)
+    return rec
+
+
+def session_items(now=None):
+    """탭별 마지막 이벤트와 활동 시각 (대화 기록 파일의 mtime). 완료·멈춤을 판정하지 않는다."""
+    now = time.time() if now is None else now
+    items = []
+    try:
+        names = os.listdir(SESSIONS)
+    except OSError:
+        return []
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        rec = load_session(name[:-5])
+        ts = rec.get("last_event_ts")
+        if not isinstance(ts, (int, float)) or isinstance(ts, bool) or now - ts > SESSION_KEEP:
+            continue
+        try:
+            activity = max(os.path.getmtime(rec.get("transcript") or ""), ts)
+        except (OSError, TypeError):
+            activity = ts
+        items.append({"session": str(rec.get("session", "")), "repo": str(rec.get("repo", "")), "cwd": str(rec.get("cwd", "")),
+                      "last_event": str(rec.get("last_event", "")), "last_event_at": iso(ts), "last_activity_at": iso(activity)})
+    items.sort(key=lambda it: it["last_activity_at"], reverse=True)
+    return items[:30]
+
+
+def prune_sessions(now):
+    try:
+        for name in os.listdir(SESSIONS):
+            path = os.path.join(SESSIONS, name)
+            if now - os.path.getmtime(path) > SESSION_KEEP:
+                os.remove(path)
+    except OSError:
+        pass
+
+
+# ── 훅 판정 (질문 보류, 조건부 재개) ─────────────────────────────────
+
+ASKING = re.compile(r"[?？]|할까요|될까요|인가요|주세요|주시면|승인|기다리|대기 중|should i|shall i|let me know|waiting for|please confirm|would you like", re.I)
+
+
+def asks_user(message):
+    """마지막 응답의 끝부분이 질문·확인 대기로 보이는가 (글자 휴리스틱)."""
+    return bool(message) and bool(ASKING.search(str(message).strip()[-300:]))
+
+
+def orca_worker():
+    """Orca가 띄운 워커(구조화 세션)인가. 워커는 질문·worker_done 뒤 끝나는 것이 계약이라 이어 가게 하지 않는다 (실측: 워커 탭에만 있는 변수)."""
+    return bool(os.environ.get("ORCA_STRUCTURED_SESSION") or os.environ.get("ORCA_AGENT_SESSION_ID"))
+
+
+def tool_calls_since(path, offset):
+    """대화 기록의 offset 뒤에 있는 도구 호출 수. 못 읽으면 0."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(max(0, int(offset or 0)))
+            return f.read(8 * 1024 * 1024).count(b'"type":"tool_use"')
+    except (OSError, TypeError, ValueError):
+        return 0
+
+
+def file_size(path):
+    try:
+        return os.path.getsize(path)
+    except (OSError, TypeError):
+        return 0
+
+
+def hook_question(data, st):
+    """질문 창(AskUserQuestion): 창 없이 거절하고 요지를 보류 목록에."""
+    questions = (data.get("tool_input") or {}).get("questions") or []
+    text = " / ".join(str(q.get("question", "")) for q in questions if isinstance(q, dict))
+    rec = touch_session(data, "question", st)
+    noted = "보류 목록에 적었습니다"
+    try:
+        append_line(HOLDS, {"ts": int(time.time()), "kind": "question", "repo": rec.get("repo") or data.get("cwd") or "",
+                            "session": str(data.get("session_id") or ""), "text": mask_text(text)})
+    except Exception:
+        noted = "보류 목록 기록에 실패했으니 최종 보고에 직접 적으세요"
+    reason = (f"자리 비움 모드({hhmm(st['until'])}까지): 사용자가 없어 질문 창을 띄우지 않았습니다. 이 질문은 {noted}. "
+              "되돌릴 수 있는 결정이면 기본값으로 정해 그 이유를 기록하고 계속하고, 아니면 이 항목만 건너뛰고 남은 다른 일을 하세요. "
+              "같은 질문을 다시 띄우지 않습니다.")
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}
+
+
+def hook_stop(data, st):
+    """턴 종료: 질문·대기로 끝났고 상한·진전 조건을 지킬 때만 이어 가게 한다. 그 밖에는 None(통과)."""
+    if data.get("stop_hook_active") or orca_worker():
+        touch_session(data, "stop", st)
+        return None
+    message = data.get("last_assistant_message")
+    rec = touch_session(data, "stop", st)
+    if not rec or not asks_user(message):
+        return None
+    blocks = rec.get("blocks") if isinstance(rec.get("blocks"), int) else 0
+    transcript = rec.get("transcript")
+    if blocks >= MAX_BLOCKS:
+        return None
+    if blocks and tool_calls_since(transcript, rec.get("block_size")) < PROGRESS_TOOLS:
+        return None  # 직전 재개 뒤 한 일이 없으면 다시 깨우지 않는다
+    touch_session(data, "resumed", st, blocks=blocks + 1, block_size=file_size(transcript))
+    try:
+        append_line(HOLDS, {"ts": int(time.time()), "kind": "stop", "repo": rec.get("repo") or data.get("cwd") or "",
+                            "session": str(data.get("session_id") or ""), "text": mask_text(message)})
+    except Exception:
+        pass
+    reason = (f"자리 비움 모드({hhmm(st['until'])}까지): 사용자가 없어 답을 받을 수 없습니다. 방금 물은 내용은 보류 목록에 적었습니다. "
+              "되돌릴 수 있는 결정이면 기본값으로 정해 이유를 기록하고 계속하세요. 되돌릴 수 없거나 확인이 필요한 일(배포·삭제·권한)은 "
+              "하지 말고 건너뛴 뒤 남은 다른 일을 하세요. 할 수 있는 일이 더 없으면 묻지 말고 `보류: <이유>` 한 줄로 끝내세요.")
+    return {"decision": "block", "reason": reason}
 
 
 # ── 명령 ─────────────────────────────────────────────────────────────
@@ -320,6 +634,10 @@ def status_obj(now=None):
         "power": power(),
         "queue_count": len(queue_items()),
         "checks": (st.get("checks") or []) if st else [],
+        "holds_count": len(hold_items()),
+        "tickets": [ticket_view(t) for t in tickets_of(st)] if on else [],
+        "ticket_candidates": ticket_candidates(),
+        "sessions": session_items(now),
     }
 
 
@@ -327,6 +645,9 @@ def cmd_on(args):
     now = time.time()
     end = parse_end(args.until, args.duration, now)
     checks, warnings = [], []
+    tickets = [parse_ticket(spec, n) for n, spec in enumerate(args.ticket or [], 1)]
+    if len({(t["repo_key"], t["stack"]) for t in tickets}) != len(tickets):
+        raise Fail(2, "bad_ticket", "같은 레포·스택의 티켓이 두 번 있습니다")
     if is_mac():
         pw = power()
         checks.append({"name": "power", "ok": pw["source"] == "ac", "detail": pw["source"]})
@@ -349,11 +670,12 @@ def cmd_on(args):
         pass
     with state_lock():
         old = load_state()
+        prune_sessions(now)
         caff = start_caffeinate(max(1, int(end - time.time()))) if is_mac() else None
         if old and not stop_caffeinate(old.get("caffeinate")):
             warnings.append("이전 절전 방지(caffeinate)가 끝났는지 확인하지 못했습니다")
         save_state({"version": 1, "id": f"{int(now)}-{os.getpid()}", "started": now, "until": end,
-                    "caffeinate": caff, "checks": checks})
+                    "caffeinate": caff, "checks": checks, "tickets": tickets})
     out = status_obj()
     out["warnings"] = warnings
     if args.json:
@@ -363,7 +685,9 @@ def cmd_on(args):
     print(f"자리 비움 모드 켬: {hhmm(end)}까지 ({left // 3600}시간 {left % 3600 // 60}분)")
     if caff:
         print(f"- 절전 방지: caffeinate pid {caff['pid']}. {LID_NOTE}")
-    print("- 확인이 필요한 명령은 확인 창 대신 거절되고 아침 목록에 쌓입니다 (권한은 넓어지지 않습니다)")
+    print("- 확인이 필요한 명령은 확인 창 대신 거절되고 아침 목록에 쌓입니다. 질문은 보류 목록에 쌓입니다")
+    for t in tickets:
+        print(f"- 배포 티켓: {t['stack']} ({t['repo']}) {t['limit']}회, 배포 전 테스트 {t['tests_note']}. 이 범위에서는 사람이 보지 않은 코드가 배포됩니다")
     if out["queue_count"]:
         print(f"- 이전 아침 목록 {out['queue_count']}건이 남아 있습니다 (away.py report --clear로 비움)")
     for w in warnings:
@@ -385,7 +709,23 @@ def cmd_off(args):
     print("자리 비움 모드 끔" if was_active else "자리 비움 모드는 꺼져 있었습니다" + (" (만료된 상태를 정리함)" if st else ""))
     if not released:
         print("- 주의: 절전 방지(caffeinate)가 해제됐는지 확인하지 못했습니다: pmset -g assertions")
+    print_runs(run_items())
     print_report(items)
+    print_holds(hold_items())
+    return 0
+
+
+def cmd_request(args):
+    """에이전트가 "이 작업에는 이 스택 배포가 필요하다"를 적는다. 사용자가 떠나기 전에 앱에서 티켓으로 고른다."""
+    if not STACK_NAME.fullmatch(args.stack or ""):
+        raise Fail(2, "bad_ticket", f"스택 이름이 올바르지 않습니다: {args.stack}")
+    cwd = os.path.realpath(args.cwd or os.getcwd())
+    repo = kitlib.git(cwd, "rev-parse", "--show-toplevel", timeout=3) or cwd
+    append_line(REQUESTS, {"ts": int(time.time()), "repo": repo, "stack": args.stack, "note": mask_text(args.note or "", 200)})
+    if args.json:
+        kitlib.emit({"ok": True, "repo": repo, "stack": args.stack})
+    else:
+        print(f"배포 티켓 후보로 적었습니다: {args.stack} ({repo}). 권한이 아닙니다. 사용자가 자리 비움을 켤 때 고르면 티켓이 됩니다")
     return 0
 
 
@@ -403,7 +743,9 @@ def cmd_status(args):
     else:
         print("자리 비움 모드: 꺼짐" + (f" ({hhmm(out['until_epoch'])}에 만료)" if out["expired"] else ""))
     print(f"- 전원: {out['power']['source']}, 뚜껑: {out['power']['lid']}")
-    print(f"- 아침 목록: {out['queue_count']}건")
+    print(f"- 아침 목록: {out['queue_count']}건, 보류된 질문: {out['holds_count']}건")
+    for it in out["sessions"][:10]:
+        print(f"- 탭 {os.path.basename(it['repo']) or it['cwd']}: {it['last_event']} {it['last_event_at'][11:16]}, 마지막 활동 {it['last_activity_at'][11:16]}")
     return 0
 
 
@@ -419,18 +761,46 @@ def print_report(items):
         print(f"   명령: {it['command']}")
 
 
+def print_runs(runs):
+    if not runs:
+        return
+    words = {"deployed": "배포됨", "no_changes": "변경 없음(배포 안 함)", "blocked": "막힘(배포 안 함)", "failed": "배포 실패", "refused": "티켓 없음(배포 안 함)"}
+    print(f"티켓 배포 기록 {len(runs)}건")
+    for n, it in enumerate(runs, 1):
+        print(f"{n}. [{it['ts'][11:16]}] {it['stack']} — {words.get(it['result'], it['result'])} ({it['repo']})")
+        for step in it["steps"]:
+            if isinstance(step, dict) and not step.get("ok"):
+                print(f"   {step.get('name')}: {step.get('detail')}")
+        if it.get("log"):
+            print(f"   로그: {it['log']}")
+
+
+def print_holds(holds):
+    if not holds:
+        return
+    print(f"보류된 질문 {len(holds)}건 (사용자가 없어 답을 받지 못한 질문)")
+    for n, it in enumerate(holds, 1):
+        kind = "질문 창" if it["kind"] == "question" else "글로 물음"
+        print(f"{n}. [{it['ts'][11:16]}] {it['repo']} ({kind})")
+        print(f"   {it['text']}")
+
+
 def cmd_report(args):
-    items = queue_items()
+    items, holds, runs = queue_items(), hold_items(), run_items()
     if args.json:
-        kitlib.emit({"ok": True, "count": len(items), "items": items})
+        kitlib.emit({"ok": True, "count": len(items), "items": items, "holds": holds, "runs": runs})
     else:
+        print_runs(runs)
         print_report(items)
+        print_holds(holds)
     if args.clear:
-        try:
-            os.remove(QUEUE)
-        except OSError:
-            pass
-        if not args.json and items:
+        for path in (QUEUE, HOLDS, RUNS, REQUESTS):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        shutil.rmtree(LOGS, ignore_errors=True)
+        if not args.json and (items or holds or runs):
             print("아침 목록을 비웠습니다")
     return 0
 
@@ -439,18 +809,40 @@ def note_active(st):
     text = (f"[37writes-kit] {hhmm(st['until'])}까지 자리 비움 모드입니다 (사용자가 자리에 없습니다). "
             "확인이 필요한 일은 아침 목록으로 넘기고, 되돌릴 수 있는 결정은 기본값으로 정해 기록하고, 다른 일을 계속합니다. "
             "거절된 명령은 바꾸거나, 스크립트로 감싸거나, 다른 워커에게 넘겨 다시 시도하지 않습니다 (kit:harness \"자리 비움\").")
+    for t in tickets_of(st):
+        here = os.path.dirname(os.path.abspath(__file__))
+        text += (f"\n배포 티켓: {t.get('repo')} 의 스택 {t.get('stack')} ({t.get('used')}/{t.get('limit')}회 사용"
+                 f"{', 잠김' if t.get('locked') else ''}). 이 스택은 `sh {os.path.join(here, 'py.sh')} {os.path.join(here, 'away_deploy.py')} "
+                 f"run --stack {t.get('stack')} --cwd <cdk 앱 폴더>`로만 배포합니다 (테스트·diff 검사 뒤 1회, 실패하면 재시도 없음). "
+                 "다른 스택·직접 `cdk deploy`는 그대로 거절됩니다.")
     if is_mac() and not ours(st.get("caffeinate")):
         text += "\n절전 방지(caffeinate)가 꺼져 있어 맥이 잠들 수 있습니다. 최종 보고에 적습니다."
     return text
 
 
 def cmd_hook(args):
-    """SessionStart·UserPromptSubmit: 켜져 있으면 모드 알림, 꺼져 있고 목록이 남았으면 SessionStart에서 건수만."""
+    """SessionStart·UserPromptSubmit: 켜져 있으면 모드 알림, 꺼져 있고 목록이 남았으면 SessionStart에서 건수만.
+    PreToolUse(AskUserQuestion)·Stop: 켜져 있을 때만 거절·재개 (hook_question, hook_stop). 오류면 출력 없이 통과."""
     try:
         data = kitlib.read_input()
         event = data.get("hook_event_name") or "UserPromptSubmit"
         st = active()
+        if event in ("PreToolUse", "Stop"):
+            out = None
+            if st and event == "Stop":
+                out = hook_stop(data, st)
+            elif st and data.get("tool_name") == "AskUserQuestion":
+                out = hook_question(data, st)
+            if out:
+                kitlib.emit(out)
+            return 0
         if st:
+            # 새 입력(사용자·Orca 메시지)이 오면 새 회차: 재개 횟수를 다시 센다
+            try:
+                touch_session(data, "prompt" if event == "UserPromptSubmit" else "start", st,
+                              **({"blocks": 0, "block_size": 0} if event == "UserPromptSubmit" else {}))
+            except Exception:
+                pass
             text = note_active(st)
         elif event == "SessionStart" and queue_items():
             here = os.path.dirname(os.path.abspath(__file__))
@@ -478,17 +870,24 @@ def main(argv):
         p = sub.add_parser("on")
         p.add_argument("--until")
         p.add_argument("--for", dest="duration")
+        p.add_argument("--ticket", action="append")
         p.add_argument("--json", action="store_true")
         for name in ("off", "status"):
             sub.add_parser(name).add_argument("--json", action="store_true")
         p = sub.add_parser("report")
         p.add_argument("--json", action="store_true")
         p.add_argument("--clear", action="store_true")
+        p = sub.add_parser("request")
+        p.add_argument("--stack")
+        p.add_argument("--note")
+        p.add_argument("--cwd")
+        p.add_argument("--json", action="store_true")
         sub.add_parser("hook")
         args = parser.parse_args(argv)
         if not args.cmd:
-            raise Fail(2, "usage", "명령이 필요합니다: on | off | status | report")
-        return {"on": cmd_on, "off": cmd_off, "status": cmd_status, "report": cmd_report, "hook": cmd_hook}[args.cmd](args)
+            raise Fail(2, "usage", "명령이 필요합니다: on | off | status | report | request")
+        return {"on": cmd_on, "off": cmd_off, "status": cmd_status, "report": cmd_report, "request": cmd_request,
+                "hook": cmd_hook}[args.cmd](args)
     except Fail as e:
         code, error, message = e.code, e.error, e.message
     except Exception as e:  # 예상 밖 오류도 --json이면 JSON 하나로

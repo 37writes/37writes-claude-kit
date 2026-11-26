@@ -115,7 +115,7 @@ expect "caffeinate_failed" "$OUT" 'd["error"] == "caffeinate_failed"'
 reset
 
 # ── on → status → off ──
-KEYS='{"ok","active","expired","until","until_epoch","remaining_seconds","started","caffeinate","power","queue_count","checks"}'
+KEYS='{"ok","active","expired","until","until_epoch","remaining_seconds","started","caffeinate","power","queue_count","checks","holds_count","sessions","tickets","ticket_candidates"}'
 code "on --for 2h" 0 aw on --for 2h --json
 expect "on JSON: status 키 + warnings" "$OUT" "set(d) == $KEYS | {'warnings'}"
 expect "on: 켜짐, 남은 초 약 7200" "$OUT" 'd["ok"] is True and d["active"] is True and d["expired"] is False and 7100 < d["remaining_seconds"] <= 7200'
@@ -241,8 +241,60 @@ aw on --for 1h | grep -q "이전 아침 목록 5건" && ok "켤 때 남은 목�
 aw off | grep -q "아침 목록 5건" && ok "off가 아침 목록을 보여 줌" || no "off 출력에 목록 없음"
 code "report --clear" 0 aw report --clear --json
 expect "clear는 보여 준 뒤 비움" "$OUT" 'd["count"] == 5'
-expect "비운 뒤 0건" "$(aw report --json)" 'd == {"ok": True, "count": 0, "items": []}'
+expect "비운 뒤 0건" "$(aw report --json)" 'd == {"ok": True, "count": 0, "items": [], "holds": [], "runs": []}'
 [ -z "$(echo '{"hook_event_name":"SessionStart"}' | aw hook)" ] && ok "꺼져 있고 목록이 비면 훅 출력 없음" || no "빈 상태에서 훅 출력"
 echo 'not json' > "$A/queue.jsonl"
 expect "깨진 목록 줄은 건너뜀" "$(aw report --json)" 'd["count"] == 0'
+reset
+
+# ── 질문 보류·조건부 재개·세션 기록 (2단계) ──
+TR="$T/transcript.jsonl"; : > "$TR"
+hook() {  # hook <이벤트> <세션> [마지막 응답] [stop_hook_active] → OUT
+  OUT=$(python3 -c 'import json,sys
+d = {"hook_event_name": sys.argv[1], "session_id": sys.argv[2], "cwd": sys.argv[5], "transcript_path": sys.argv[6]}
+if sys.argv[1] == "Stop":
+    d["last_assistant_message"] = sys.argv[3]; d["stop_hook_active"] = sys.argv[4] == "1"
+if sys.argv[1] == "PreToolUse":
+    d["tool_name"] = sys.argv[3] or "AskUserQuestion"
+    d["tool_input"] = {"questions": [{"question": "어느 이름으로 할까요? --token HOLD_MARKER", "header": "이름", "options": []}]}
+print(json.dumps(d))' "$1" "$2" "${3:-}" "${4:-0}" "$T" "$TR" | aw hook)
+}
+tools() { n=0; while [ $n -lt "$1" ]; do echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}' >> "$TR"; n=$((n + 1)); done; }
+ASK='설정을 마쳤습니다. 이름은 a와 b 중 어느 쪽으로 할까요?'
+hook Stop s1 "$ASK"; [ -z "$OUT" ] && ok "꺼져 있으면 Stop 통과" || no "꺼져 있는데 Stop 출력" "$OUT"
+hook PreToolUse s1; [ -z "$OUT" ] && ok "꺼져 있으면 질문 창 그대로" || no "꺼져 있는데 질문 거절" "$OUT"
+[ ! -e "$A/holds.jsonl" ] && [ ! -e "$A/sessions" ] && ok "꺼져 있으면 보류·세션 기록 없음" || no "꺼진 상태에서 기록"
+aw on --for 1h >/dev/null
+hook PreToolUse s1
+expect "질문 창: deny + 보류 안내" "$OUT" 'd["hookSpecificOutput"]["permissionDecision"] == "deny" and "보류 목록에 적었습니다" in d["hookSpecificOutput"]["permissionDecisionReason"] and "까지)" in d["hookSpecificOutput"]["permissionDecisionReason"]'
+hook PreToolUse s1 Bash; [ -z "$OUT" ] && ok "다른 도구의 PreToolUse는 출력 없음" || no "다른 도구에 출력" "$OUT"
+hook Stop s1 '작업을 마쳤습니다. 변경은 두 파일입니다.'; [ -z "$OUT" ] && ok "질문 없는 완료 보고는 통과" || no "완료 보고를 막음" "$OUT"
+hook Stop s1 "$ASK" 1; [ -z "$OUT" ] && ok "stop_hook_active면 통과" || no "stop_hook_active인데 막음" "$OUT"
+hook Stop s1 "$ASK"
+expect "글 질문 1번째: block + 기본값·보류 안내" "$OUT" 'd["decision"] == "block" and "기본값" in d["reason"] and "보류:" in d["reason"]'
+hook Stop s1 "$ASK"; [ -z "$OUT" ] && ok "재개 뒤 도구 호출이 없으면 다시 막지 않음" || no "진전 없이 다시 막음" "$OUT"
+tools 3; hook Stop s1 "$ASK"
+expect "도구 호출 3건 뒤 2번째: block" "$OUT" 'd["decision"] == "block"'
+tools 5; hook Stop s1 "$ASK"; [ -z "$OUT" ] && ok "3번째는 통과 (회차당 2회)" || no "3번째도 막음" "$OUT"
+hook Stop s2 "Should I proceed with the rename?"
+expect "다른 세션은 따로 센다 (영어 신호)" "$OUT" 'd["decision"] == "block"'
+hook UserPromptSubmit s1 >/dev/null; hook Stop s1 "$ASK"
+expect "새 입력 뒤에는 다시 1번째" "$OUT" 'd["decision"] == "block"'
+OUT=$(python3 -c 'import json,sys;print(json.dumps({"hook_event_name":"Stop","session_id":"w1","cwd":sys.argv[1],"transcript_path":sys.argv[2],"last_assistant_message":"계속할까요?","stop_hook_active":False}))' "$T" "$TR" | ORCA_STRUCTURED_SESSION=1 sh "$S/py.sh" "$S/away.py" hook)
+[ -z "$OUT" ] && ok "Orca 워커는 이어 가게 하지 않음" || no "워커를 막음" "$OUT"
+echo 'not json' | aw hook >/dev/null; [ $? = 0 ] && ok "깨진 훅 입력도 끝 코드 0" || no "깨진 입력에서 끝 코드"
+OUT=$(echo '{"hook_event_name":"Stop","last_assistant_message":"할까요?"}' | aw hook); [ -z "$OUT" ] && ok "세션 id가 없으면 통과" || no "세션 없는 Stop을 막음" "$OUT"
+code "보류 뒤 report --json" 0 aw report --json
+expect "holds: 질문 창 1 + 글 질문(같은 글은 세션별 한 건)" "$OUT" 'd["count"] == 0 and [h["kind"] for h in d["holds"]].count("question") == 1 and {h["session"] for h in d["holds"] if h["kind"] == "stop"} == {"s1", "s2"} and len(d["holds"]) == 3 and set(d["holds"][0]) == {"ts","kind","repo","session","text"}'
+grep -q HOLD_MARKER "$A/holds.jsonl" && no "보류 목록 가림 실패" || ok "보류 목록에 HOLD_MARKER 없음"
+aw report | grep -q "보류된 질문 3건" && ok "report 텍스트에 보류된 질문" || no "report 텍스트" "$(aw report)"
+code "세션이 있는 status" 0 aw status --json
+expect "status: holds_count·sessions" "$OUT" 'd["holds_count"] == 3 and {x["session"] for x in d["sessions"]} == {"s1","s2","w1"} and set(d["sessions"][0]) == {"session","repo","cwd","last_event","last_event_at","last_activity_at"} and {x["last_event"] for x in d["sessions"]} <= {"resumed","stop","prompt","question","start"}'
+[ "$(stat -f %Lp "$A/holds.jsonl")" = 600 ] && [ "$(stat -f %Lp "$A/sessions")" = 700 ] && ok "보류 0600, 세션 폴더 0700" || no "권한"
+aw off >/dev/null; hook Stop s1 "$ASK"; [ -z "$OUT" ] && ok "끈 뒤 Stop 통과" || no "끈 뒤에도 막음" "$OUT"
+aw on --for 1h >/dev/null; hook Stop s1 "$ASK"
+expect "다시 켜면(새 회차 id) 재개 횟수 초기화" "$OUT" 'd["decision"] == "block"'
+aw off >/dev/null
+code "report --clear" 0 aw report --clear --json
+expect "clear 뒤 holds도 0" "$(aw report --json)" 'd["holds"] == []'
 exit $fail

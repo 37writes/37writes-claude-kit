@@ -1,5 +1,5 @@
 {
-  "description": "37writes kit: 진행 중 기획서 이어하기, Orca 작업 절차 안내, 위험 명령·배포 push 확인, 자리 비움 모드 알림",
+  "description": "37writes kit: 진행 중 기획서 이어하기, Orca 작업 절차 안내, 위험 명령·배포 push 확인, 자리 비움 모드(알림, 질문 보류, 조건부 재개)",
   "hooks": {
     "SessionStart": [
       {
@@ -41,6 +41,27 @@
             "type": "command",
             "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/guard.py\"",
             "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/away.py\" hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" \"${CLAUDE_PLUGIN_ROOT}/scripts/away.py\" hook",
+            "timeout": 5
           }
         ]
       }

@@ -347,6 +347,8 @@ def segments(command):
 # 인자가 실행되지 않는 명령. 이 명령의 인자와 heredoc 본문은 글자로 본다 (안의 $(…)·백틱은 따로 해석된다).
 DATA_COMMANDS = {"echo", "printf", "cat", "grep", "rg", "ls", "head", "tail", "wc", "gh"}
 DATA_GIT = {"commit", "tag", "log", "show", "diff", "grep", "add", "status", "notes"}
+# 인자가 파일·폴더 이름인 명령. 이름 속의 단어는 명령이 아니지만 파일을 만들므로 경로 보호(away·deploy 기록)는 그대로 본다.
+NAME_COMMANDS = {"mkdir", "touch", "tee"}
 # 받은 글자를 실행하지 않는 파이프 소비자
 FILTERS = {"grep", "rg", "head", "tail", "wc", "sort", "uniq", "tee", "cat", "jq", "sed", "tr", "cut", "less", "awk",
            "column", "nl", "fold", "pbcopy"}
@@ -378,6 +380,14 @@ def is_text(seg):
     return data_command(seg) and not seg.feeds_exec
 
 
+def no_exec(seg):
+    """규칙 글자 검사에서 뺄 세그먼트: 글자이거나, 인자가 이름뿐인 명령."""
+    if is_text(seg):
+        return True
+    words = strip_wrappers(list(seg.words))
+    return bool(words) and os.path.basename(words[0]) in NAME_COMMANDS and not seg.feeds_exec
+
+
 WORD_RULES = {"cdk": ({"deploy", "destroy"}, 7), "terraform": ({"apply", "destroy"}, 8)}
 
 
@@ -386,7 +396,7 @@ def rule_reasons(segs):
     cdk·terraform은 단어로도 본다 (`cdk --profile prod deploy`처럼 사이에 옵션이 낀 경우)."""
     reasons = []
     for seg in segs:
-        if is_text(seg):
+        if no_exec(seg):
             continue
         text = seg.text()
         reasons += [reason for pattern, reason in RULES if re.search(pattern, text)]
@@ -428,7 +438,7 @@ def push_free_repo(path):
 def push_reasons(segs, cwd):
     """git push마다: 프로필에 'push: 배포 아님'인 레포의 일반 push면 통과, 강제·삭제 push나 판단 못 하면 확인.
     중첩 실행(sh -c, 괄호 안) 속의 push는 폴더를 따라가지 못하므로 통과로 세지 않는다."""
-    expected = sum(len(PUSH.findall(seg.text())) for seg in segs if not seg.nested and not is_text(seg))
+    expected = sum(len(PUSH.findall(seg.text())) for seg in segs if not seg.nested and not no_exec(seg))
     if not expected:
         return []
     here, safe = cwd, 0
@@ -502,6 +512,17 @@ def away_reasons(segs):
     return []
 
 
+def ticket_reasons(segs):
+    """배포 티켓(`away.py on --ticket`)은 사용자만 만든다 (앱 또는 `!` 명령은 이 훅을 거치지 않는다)."""
+    for seg in segs:
+        if is_text(seg):
+            continue
+        text = seg.text()
+        if "away.py" in text and re.search(r"(?<![\w-])--ticket\b", text):
+            return ["자리 비움 배포 티켓은 사용자가 직접 만든다 (메뉴 막대 앱 또는 `! away.py on --ticket`)"]
+    return []
+
+
 def decide(reasons, data, command):
     """평소에는 ask. 자리 비움 모드가 유효하면 deny + 아침 목록 (권한은 넓히지 않고 확인 창만 없앤다).
     상태를 못 읽으면(없음·깨짐·만료·오류) ask, 유효한데 목록 쓰기가 실패해도 deny."""
@@ -563,6 +584,7 @@ def all_reasons(command, cwd):
     reasons += deploy_reasons(segs)
     reasons += record_reasons(segs)
     reasons += away_reasons(segs)
+    reasons += ticket_reasons(segs)
     return list(dict.fromkeys(reasons))
 
 

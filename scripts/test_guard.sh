@@ -93,6 +93,12 @@ check none 'echo done # cdk deploy 는 나중에'
 check none 'cdk diff Demo'
 check none 'cdk synth && cdk ls'
 check none 'terraform plan -out tf.plan'
+# 파일·폴더 이름 속의 단어 (S1 검증). 이름 안의 $(…)와 경로 보호는 그대로
+check none 'mkdir -p "terraform apply"'
+check none 'touch "terraform apply.md"'
+check none 'echo hi | tee "terraform apply.log"'
+check ask 'mkdir "$(terraform apply)"'
+check ask 'touch ~/.config/37writes-kit/away/state.json'
 # ── 글자가 실행되는 경우는 그대로 본다 (미탐 방지 → ask) ──
 check ask 'cdk deploy Demo'
 check ask 'npx cdk --profile prod deploy ShiP1Agent'
@@ -134,6 +140,13 @@ check ask 'echo "$(rm -rf ~/)"'
 check ask 'orca terminal send --text "cdk deploy Demo"'
 check ask 'echo "{}" > ~/.config/37writes-kit/away/state.json'
 check ask 'printf x | tee ~/.config/37writes-kit/away/state.json'
+# 배포 티켓은 사용자만 만든다
+check ask 'sh scripts/py.sh scripts/away.py on --for 3h --ticket ~/dev/app::Demo'
+check ask 'python3 scripts/away.py on --until 08:00 --ticket=/x::Demo::2'
+check none 'sh scripts/py.sh scripts/away.py on --for 3h'
+check none 'sh scripts/py.sh scripts/away.py request --stack Demo --note "가입 시험에 필요"'
+check none 'sh scripts/py.sh scripts/away_deploy.py run --stack Demo --cwd infra'
+check none 'git commit -m "away.py on --ticket 설명"'
 # 해석하지 못하면(닫히지 않은 따옴표) 예전처럼 원문 전체를 검사한다
 check ask 'git commit -m "cdk deploy 수정'
 check ask "echo 'unterminated && ./deploy.sh"
