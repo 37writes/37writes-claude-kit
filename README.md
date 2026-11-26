@@ -93,13 +93,13 @@ push가 곧 배포인 레포에서 프로필에 정책 줄을 두면, 정책 안
 
 - 끝나는 시각은 필수이고, 그 시각이 지나면 스스로 꺼진 것으로 본다 (다시 평소 확인 창). 넉넉히 잡는다. 상태는 `~/.config/37writes-kit/away/` 하나라 같은 계정의 모든 레포·세션에 걸린다.
 - macOS에서는 전원 연결·뚜껑 열림을 확인하고 `caffeinate -i -s`로 유휴 잠자기를 막는다. 배터리·뚜껑 닫힘이면 켜지 않는다. **켠 뒤 뚜껑을 닫거나 전원을 뽑으면 잠든다.** 다른 OS는 절전 방지를 건너뛴다.
-- 아침 목록에는 레포, 이유, 명령(`이름=값`의 값과 시크릿 패턴을 가리고 긴 명령은 앞 150자 + 뒤 60자)이 남고, 같은 명령은 한 건으로 묶여 횟수가 보인다. 자동으로 다시 실행하지 않는다.
+- 아침 목록에는 레포, 이유, 명령(`이름=값`의 값과 시크릿 패턴을 가리고(완전하지 않다. 0600 파일이고 대화에는 건수만 붙는다) 긴 명령은 앞 150자 + 뒤 60자)이 남고, 같은 명령은 한 건으로 묶여 횟수가 보인다. 자동으로 다시 실행하지 않는다.
 - 돌아와서 일할 때 켜져 있으면 확인 창 대신 거절이 온다. 거절 이유에 끝 시각이 보이고 `off`로 끈다. 사용자의 `! 명령`은 훅을 거치지 않으므로 모드와 상관없이 실행된다.
 
 | 명령 | 끝 코드 | `--json` 출력 |
 |---|---|---|
 | `on --until HH:MM` \| `--for 3h` | 0 켬 · 2 인자 오류(`no_until` `bad_time` `too_long` `usage`) · 3 시작 거부(`on_battery` `lid_closed` `power_unknown`) · 4 `caffeinate_failed` · 1 그 밖 | status와 같은 모양 + `warnings`. 실패는 `{ok:false, error, message}` |
-| `off` | 0 (꺼져 있어도) | `{ok, was_active, caffeinate_released, queue_count}` |
+| `off` | 0 (꺼져 있어도) · 1 `state_not_removed`(상태 파일을 지우지 못함, 모드는 켜진 채) | `{ok, was_active, caffeinate_released, queue_count}` |
 | `status` | 0 | `{ok, active, expired, until, until_epoch, remaining_seconds, started, caffeinate:{pid, alive}, power:{source, lid}, queue_count, checks}`. 꺼져 있으면 시각은 `null`, 만료면 `expired:true` |
 | `report [--clear]` | 0 | `{ok, count, items:[{key, first, last, count, repo, reasons, command}]}` |
 

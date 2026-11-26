@@ -1,0 +1,82 @@
+global.openai.gpt-6.2-astra
+
+# S5 독립 검증 — 수정 후 재검증 필요
+
+대상: `37writes/away-mode`, `90b6632...aa1fe5d`. 독립 검증자 Codex의 현재 세션 `turn_context.model`로 모델명을 확인했다. 기본 시험 293개는 통과했고 실기에서 절전 방지도 해제됐다. 그러나 guard가 반드시 제한 시간 안에 판정을 돌려준다고 볼 수 없고(F1), `off`가 성공을 보고한 뒤에도 모드가 실제로 켜진 경우를 확인했다(F2).
+
+## 1. 시험 재실행
+
+각 명령은 별도의 임시 HOME·TMPDIR, `PYTHONDONTWRITEBYTECODE=1`, `GIT_ALLOW_PROTOCOL=file`에서 실행했다. Git 시험은 임시 로컬 bare 저장소만 사용했다. stdout/stderr를 합쳐 줄 시작 `ok `·`FAIL `만 셌다.
+
+| 명령 | 끝 코드 | ok | FAIL |
+|---|---:|---:|---:|
+| `sh scripts/test_guard.sh` | 0 | 92 | 0 |
+| `sh scripts/test_away.sh` | 0 | 94 | 0 |
+| `sh scripts/test_deploy_gate.sh` | 0 | 56 | 0 |
+| `sh scripts/test_plans.sh` | 0 | 32 | 0 |
+| `sh scripts/test_profile_check.sh` | 0 | 19 | 0 |
+| `claude plugin validate .` (2.1.332) | 0 | 0 | 0 |
+
+마지막 명령은 `ok`/`FAIL` 형식을 쓰지 않는다. 실제 최종 결과는 `Validation passed with warnings`. 루트 CLAUDE.md는 플러그인 컨텍스트에 로드되지 않는다는 경고가 있다. 별도 디렉터리 제출 진단에는 라이선스 누락(제출 거부 사유)과 아이콘 누락(경고)도 표시됐다. 이 진단은 기본 검증 끝 코드에 반영되지 않으며 이번 작업은 제출을 포함하지 않는다.
+
+## 2. 변경 범위와 권한
+
+`git diff --stat 90b6632...HEAD` → 12파일, +1065/−42. 구현·시험·사용 문서 8파일 외에는 버전 매니페스트 2개(둘 다 0.21.0 → 0.22.0만 변경), 기획서와 반박 보고서다. 모두 S1~S4 범위 안이다. `wc -l skills/harness/SKILL.md` → 157. 메뉴 막대 앱, 새 허용 목록, Stop·Write·Edit 훅은 없다.
+
+`git diff 90b6632...HEAD | grep -nE 'AKIA|secret|api[_-]?key|BEGIN .*PRIVATE' | cut -d: -f1` → diff 176, 512, 514, 1073, 1080행. 설계 문서 1줄, 가림 정규식 2줄, 시험용 고정 표식 2줄이며 이 패턴에서 실제 자격 증명은 발견하지 않았다. 원문·값은 출력하지 않았다. 이 검색은 모든 종류의 자격 증명을 검출하는 검사가 아니다.
+
+`git diff 90b6632...HEAD -- scripts/guard.py`에서 기존 사유는 제거하지 않고 `away_reasons`만 추가했다. 최종 함수가 반환하면 이유 없음만 무출력, 이유가 있으면 꺼짐·오류는 `ask`, 유효하면 `deny`다. `allow`를 반환하는 분기는 없다. 직접 비교한 입력과 끝 코드는 다음과 같다. 아래 재현 명령 모두 저장소 루트 기준이며, guard 입력은 셸로 실행하지 않는다.
+
+```sh
+# 별도 서브셸에서 시작. 이후 예제는 이 격리 환경에서만 실행한다.
+T=$(mktemp -d); export HOME="$T" PYTHONDONTWRITEBYTECODE=1
+A="$T/.config/37writes-kit/away"; mkdir -p "$A"; chmod 700 "$A"
+aw() { sh scripts/py.sh scripts/away.py "$@"; }
+state() { python3 -c 'import json,sys,time; t=int(time.time()); json.dump(dict(version=1,started=t,until=t+120),open(sys.argv[1],"w"))' "$A/state.json"; }
+probe() { python3 -c 'import json,os,sys; print(json.dumps(dict(cwd=os.environ["HOME"],tool_input=dict(command=sys.argv[1]))))' "$1" | python3 scripts/guard.py; }
+matrix() { for c in 'git clean -fd' 'git branch -D fixture' './deploy.sh' 'git push --force' 'git status'; do probe "$c"; done; }
+matrix; state; matrix
+```
+
+| 입력(위 순서) | 꺼짐 | 켜짐 |
+|---|---|---|
+| 앞의 4개 | 모두 `ask`, exit 0 | 모두 `deny`, exit 0 |
+| `git status` | 출력 없음, exit 0 | 출력 없음, exit 0 |
+
+**F1 · 막아야 함 — 목록을 쓰는 동안에는 아직 거절 판정이 전달되지 않는다.** 읽기 전용 재확인: `rg -n 'queue_add|os.open\(QUEUE|os.write\(fd|kitlib.emit|"timeout": 15' scripts/away.py scripts/guard.py hooks/hooks.json`. 기대: 목록을 바로 기록할 수 없어도 15초 안에 `deny`. 실제 코드: 판정 JSON은 동기 `queue_add`가 끝난 뒤에만 출력한다. `O_APPEND`는 덧붙일 위치를 보장할 뿐 열기·쓰기 대기 시간을 제한하지 않는다. 일반 파일인지 확인하거나 비차단으로 여는 처리도 없다. 예외가 곧바로 발생하는 경우는 시험하지만 I/O가 반환하지 않으면 예외 처리까지 도달하지 않는다. 기존 `ask`에는 이 대기가 없었다. 호스트의 훅 시간 초과가 실행 허용으로 이어진다는 기획서의 실측을 고려하면 **명시적 allow 분기는 없어도 권한 비확장을 보증할 수 없다**. 판정을 목록 I/O 대기와 분리하고 지연된 기록에서도 제시간에 거절되는지를 회귀 검증할 필요가 있다. 이번 검증에서는 호스트 시간 초과나 실제 명령 실행을 유발하지 않았다.
+
+전원 관련 실행 지점은 `rg -n 'pmset|sudo|caffeinate.*-i' scripts/away.py`로 확인했다. `pmset`은 `-g batt`, `-g assertions`만 호출한다. `sudo`, `disablesleep`, 화면을 켜 두는 `-d` 호출 없음. 배터리는 자식을 만들기 전에 exit 3 `on_battery`로 거부하며 가짜 배터리 시험이 통과했다. 배터리 실기는 하지 않았다. `hooks/hooks.json`의 SessionStart·UserPromptSubmit 모두 `away.py hook`이고, 안내 종료 시각은 상태에서 읽는다. README·harness에 동일 UID 한계와 거절 뒤 재시도 금지가 있다. CLI 일반 출력에는 뚜껑 경고가 있다.
+
+## 3. 직접 고른 경계 시나리오
+
+**F2 · 막아야 함 — 모드를 끄지 못해도 메뉴 앱에는 성공으로 표시된다.** 선택 이유: 메뉴 앱이 `off`의 끝 코드와 `ok`를 믿을 수 있어야 한다. 위 `matrix; state; matrix` 직후, 격리 폴더 안의 실제 프로세스 없는 상태로 다음을 실행한다.
+
+```sh
+touch "$A/state.lock"; chmod 500 "$A"
+aw off --json; echo "$?"; aw status --json; test -e "$A/state.json"; echo "$?"
+chmod 700 "$A"
+```
+
+기대: 상태를 지울 수 없으면 실패 JSON·비영 끝 코드, 성공이면 후속 status는 비활성. 실제: `off`는 exit 0, `ok:true, was_active:true, caffeinate_released:true, queue_count:4`; 직후 `status`는 exit 0, `active:true, expired:false`, 상태 파일 존재 확인도 exit 0. `remove_state()`가 `FileNotFoundError` 이외의 `OSError`까지 무시한다. macOS 일반 계정·폴더 권한으로 확인했고 ACL·네트워크 볼륨은 미검증이다.
+
+**F3 · 고치면 좋음 — 상태 파일 모드가 기획서의 0600과 다르다.** 선택 이유: 동일 계정 단위 기록의 권한이 사용자 기본 umask에 달려 있는지 확인하기 위해서다. 새 임시 HOME에서 `umask`(022) → 아래 4절의 실제 `on` → `stat -f '%Lp' "$A/state.json"`에 해당하는 Python `stat.S_IMODE` 조회. 기대 0600, 실제 0644. `save_state()`가 기본 생성 모드로 임시 파일을 열어 교체한다. 새 부모 폴더는 0700이라 이 관찰만으로 타 사용자에게 내용이 노출됐다고 볼 수는 없다. ACL·다른 OS는 미검증이다.
+
+**F4 · 막아야 함 — 공백이 포함된 옵션 값의 가림을 보장하지 않는다(정적 검토).** 선택 이유: 일반적인 CLI 인자는 공백을 포함한 문자열 하나일 수 있고, 아침 목록은 모드를 끈 뒤에도 남는다. 읽기 전용 재확인: `sed -n '/^MASKS = /,/^def queue_add/p' scripts/away.py`. 기대: 문서가 가린다고 명시한 비밀번호류 옵션의 값 전체가 저장 전에 가려짐. 실제: 옵션 전용 정규식이 값의 첫 공백 전까지만 소비하고, 뒤의 별도 대입식 규칙은 공백으로 전달한 옵션 값을 처리하지 않는다. 부분 가림만 된 결과가 `queue_add()`의 `command`로 들어갈 수 있다. 분류가 확실하지 않은 값은 명령 미리보기에서 생략하는 쪽이 안전하다. 실제 비밀번호를 사용하거나 누출 예제를 실행하지 않았으며 모든 셸 문법의 가림 여부도 검증하지 않았다.
+
+## 4. 실제 Mac: 시작·조회·해제
+
+다른 시험과 겹치지 않는 새 `mktemp -d` HOME에서 다음 순서로 확인했다. 테스트 대역 없이 OS의 `caffeinate`, `pmset`, `ps`를 썼다. 아래는 같은 확인을 반복하는 셸 명령이다.
+
+```sh
+T=$(mktemp -d); export HOME="$T" PYTHONDONTWRITEBYTECODE=1
+aw() { sh scripts/py.sh scripts/away.py "$@"; }
+on=$(aw on --for 2m --json); pid=$(printf '%s' "$on" | python3 -c 'import json,sys; print(json.load(sys.stdin)["caffeinate"]["pid"])')
+ps -p "$pid" -o args=; pmset -g assertions | grep -Fc "pid $pid("
+aw status --json; aw off --json
+pmset -g assertions | grep -Fc "pid $pid("
+# 각 임시 HOME 사용이 끝나면 해당 mktemp 폴더만 정리한다.
+```
+
+실제 시작 2026-11-26 11:11:51 KST, 종료 예정 11:13:51. `on` exit 0, `active:true`, AC/open, `remaining_seconds:119`, `queue_count:0`, `warnings:[]`. 반환 PID **9294**의 실측 인자는 `caffeinate -i -s -t 119`, 해당 assertion **2개**. `status` exit 0, 동일 PID·종료 시각, `alive:true`. `off` exit 0, `ok:true, was_active:true, caffeinate_released:true, queue_count:0`. 직후 `pmset -g assertions` 자체 exit 0, **PID 9294 일치 0개**. 다른 PID에 신호를 보내지 않았다. 장시간 유휴 절전·뚜껑 동작, 자연 만료, 대화형 호스트 안에서 다음 일까지 이어지는 동작은 이 실기 시험의 범위가 아니다.
+
+최종 확인: 모든 시험용 임시 폴더를 정리한 뒤 원래 HOME의 `ls -d ~/.config/37writes-kit/away/`는 exit 1(경로 없음). `git status --short --untracked-files=all`은 이 보고서 한 파일만 표시했다. 구현 수정·커밋·외부 push·배포는 하지 않았다.

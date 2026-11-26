@@ -153,6 +153,21 @@ START=$(date +%s); checkin "$T/free" deny "$INCIDENT"; END=$(date +%s)
 has "목록 기록 실패를 이유에 적음" "$OUT" '"기록에 실패" in s and "넣었습니다" not in s'
 [ $((END - START)) -lt 5 ] && echo "ok   목록을 못 써도 5초 안에 응답" || { echo "FAIL 응답이 늦음: $((END - START))초"; fail=1; }
 rmdir "$A/queue.jsonl"
+# 목록 자리에 FIFO(읽는 쪽 없음): 열다가 멈추지 않고 거절 (S5 검증 F1)
+mkfifo "$A/queue.jsonl"
+START=$(date +%s); checkin "$T/free" deny "$INCIDENT"; END=$(date +%s)
+has "FIFO 목록: 기록 실패를 이유에 적음" "$OUT" '"기록에 실패" in s'
+[ $((END - START)) -lt 8 ] && echo "ok   FIFO 목록에서도 8초 안에 거절" || { echo "FAIL FIFO에서 응답이 늦음: $((END - START))초"; fail=1; }
+rm -f "$A/queue.jsonl"
+# 기록 함수가 돌아오지 않아도 훅 제한 전에 거절 (queue_add를 멈추게 바꾼 away 모듈)
+mkdir "$T/slow"; cp "$S/guard.py" "$S/kitlib.py" "$S/away.py" "$T/slow/"
+[ -f "$S/deploy_gate.py" ] && cp "$S/deploy_gate.py" "$T/slow/"
+printf '\ndef queue_add(*a, **k):\n    time.sleep(60)\n' >> "$T/slow/away.py"
+START=$(date +%s)
+OUT=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$T/free" "$INCIDENT" | python3 "$T/slow/guard.py")
+END=$(date +%s)
+has "기록이 멈춰도 deny + 기록 실패" "$OUT" '"\"deny\"" in s.replace(" ", "") and "기록에 실패" in s'
+[ $((END - START)) -lt 10 ] && echo "ok   기록이 멈춰도 10초 안에 거절 (훅 제한 15초)" || { echo "FAIL 멈춘 기록에서 응답이 늦음: $((END - START))초"; fail=1; }
 # 상태 폴더를 읽지 못하면 평소대로 ask
 chmod 000 "$A"; checkin "$T/free" ask "$INCIDENT"; chmod 700 "$A"
 away_state none

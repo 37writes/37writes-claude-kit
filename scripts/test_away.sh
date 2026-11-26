@@ -175,6 +175,18 @@ code "죽은 pid로 off" 0 aw off --json
 expect "죽은 pid: 해제 확인됨" "$OUT" 'd["was_active"] is True and d["caffeinate_released"] is True'
 reset
 
+# ── 상태를 지우지 못하면 off는 실패 (S5 검증 F2) ──
+aw on --for 1h >/dev/null
+[ "$(stat -f %Lp "$A/state.json")" = 600 ] && ok "상태 파일 0600 (umask와 무관)" || no "상태 파일 권한: $(stat -f %Lp "$A/state.json")"
+chmod 500 "$A"
+code "상태 폴더에 쓸 수 없을 때 off" 1 aw off --json
+expect "state_not_removed" "$OUT" 'd["ok"] is False and d["error"] == "state_not_removed"'
+expect "그 뒤 status는 여전히 켜짐" "$(aw status --json)" 'd["active"] is True'
+chmod 700 "$A"
+code "권한을 되돌린 뒤 off" 0 aw off --json
+expect "꺼짐" "$(aw status --json)" 'd["active"] is False'
+reset
+
 # ── 만료·깨진 상태 ──
 mkdir -p "$A"
 python3 -c 'import json,sys,time
@@ -206,26 +218,27 @@ away.queue_add("/repo/a", ["CDK 배포/삭제"], "npx cdk deploy ShiP1Tools --pa
 away.queue_add("/repo/b", ["IAM 권한 변경"], "AWS_SECRET_ACCESS_KEY=abc123 aws iam put-role-policy --token zzz999 -H 'Authorization: Bearer qqq777' AKIAABCDEFGHIJKLMNOP", "s2")
 away.queue_add("/repo/a", ["CDK 배포/삭제"], sys.argv[2] + " TargetAlpha", "s1")
 away.queue_add("/repo/a", ["CDK 배포/삭제"], sys.argv[2] + " TargetBravo", "s1")
+away.queue_add("/repo/c", ["x"], "tool --password 'first SPACED_ONE' --api-key \"k SPACED_TWO\" --token=\"t SPACED_THREE\" run", "s3")
 EOF
 code "report --json" 0 aw report --json
-expect "같은 명령(공백만 다름)은 한 건, 횟수 2" "$OUT" 'd["ok"] and d["count"] == 4 and d["items"][0]["count"] == 2 and set(d["items"][0]) == {"key","first","last","count","repo","reasons","command"}'
+expect "같은 명령(공백만 다름)은 한 건, 횟수 2" "$OUT" 'd["ok"] and d["count"] == 5 and d["items"][0]["count"] == 2 and set(d["items"][0]) == {"key","first","last","count","repo","reasons","command"}'
 expect "뒤쪽만 다른 긴 명령 2건이 구분됨" "$OUT" 'd["items"][2]["command"] != d["items"][3]["command"] and d["items"][2]["command"].endswith("TargetAlpha") and len(d["items"][2]["command"]) <= 220'
-for marker in DEMO_MARKER abc123 zzz999 qqq777 AKIAABCDEFGHIJKLMNOP; do
+for marker in DEMO_MARKER abc123 zzz999 qqq777 AKIAABCDEFGHIJKLMNOP SPACED_ONE SPACED_TWO SPACED_THREE; do
   if grep -q "$marker" "$A/queue.jsonl" || aw report | grep -q "$marker"; then no "가림 실패: $marker"; else ok "목록·report에 $marker 없음"; fi
 done
 aw report | grep -q "License=\*\*\*" && aw report | grep -q "2회" && ok "report 텍스트 (가린 값, 횟수)" || no "report 텍스트" "$(aw report)"
-expect "status의 queue_count는 묶은 건수" "$(aw status --json)" 'd["queue_count"] == 4'
+expect "status의 queue_count는 묶은 건수" "$(aw status --json)" 'd["queue_count"] == 5'
 [ "$(stat -f %Lp "$A/queue.jsonl")" = 600 ] && [ "$(stat -f %Lp "$A")" = 700 ] && ok "목록 0600, 폴더 0700" || no "권한: $(stat -f %Lp "$A/queue.jsonl") $(stat -f %Lp "$A")"
 OUT=$(echo '{"hook_event_name":"SessionStart"}' | aw hook)
-expect "꺼져 있고 목록이 있으면 SessionStart가 건수만 알림" "$OUT" 'd["hookSpecificOutput"]["hookEventName"] == "SessionStart" and "4건" in d["hookSpecificOutput"]["additionalContext"] and "cdk" not in d["hookSpecificOutput"]["additionalContext"] and "ShiP1Tools" not in d["hookSpecificOutput"]["additionalContext"]'
+expect "꺼져 있고 목록이 있으면 SessionStart가 건수만 알림" "$OUT" 'd["hookSpecificOutput"]["hookEventName"] == "SessionStart" and "5건" in d["hookSpecificOutput"]["additionalContext"] and "cdk" not in d["hookSpecificOutput"]["additionalContext"] and "ShiP1Tools" not in d["hookSpecificOutput"]["additionalContext"]'
 [ -z "$(echo '{"hook_event_name":"UserPromptSubmit"}' | aw hook)" ] && ok "꺼져 있으면 UserPromptSubmit 알림 없음" || no "꺼져 있는데 UserPromptSubmit 알림"
 aw on --for 1h >/dev/null
 OUT=$(echo '{"hook_event_name":"SessionStart"}' | aw hook)
 expect "켜져 있으면 SessionStart도 모드 알림 (끝 시각)" "$OUT" '"까지 자리 비움 모드" in d["hookSpecificOutput"]["additionalContext"] and "절전 방지" not in d["hookSpecificOutput"]["additionalContext"]'
-aw on --for 1h | grep -q "이전 아침 목록 4건" && ok "켤 때 남은 목록 안내" || no "남은 목록 안내"
-aw off | grep -q "아침 목록 4건" && ok "off가 아침 목록을 보여 줌" || no "off 출력에 목록 없음"
+aw on --for 1h | grep -q "이전 아침 목록 5건" && ok "켤 때 남은 목록 안내" || no "남은 목록 안내"
+aw off | grep -q "아침 목록 5건" && ok "off가 아침 목록을 보여 줌" || no "off 출력에 목록 없음"
 code "report --clear" 0 aw report --clear --json
-expect "clear는 보여 준 뒤 비움" "$OUT" 'd["count"] == 4'
+expect "clear는 보여 준 뒤 비움" "$OUT" 'd["count"] == 5'
 expect "비운 뒤 0건" "$(aw report --json)" 'd == {"ok": True, "count": 0, "items": []}'
 [ -z "$(echo '{"hook_event_name":"SessionStart"}' | aw hook)" ] && ok "꺼져 있고 목록이 비면 훅 출력 없음" || no "빈 상태에서 훅 출력"
 echo 'not json' > "$A/queue.jsonl"

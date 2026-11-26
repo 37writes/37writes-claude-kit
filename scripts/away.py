@@ -80,16 +80,21 @@ def ensure_dir():
 def save_state(st):
     ensure_dir()
     tmp = STATE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(st, f, ensure_ascii=False)
+    os.chmod(tmp, 0o600)
     os.replace(tmp, STATE)
 
 
 def remove_state():
+    """상태 파일을 지운다. 지우지 못해 파일이 남으면 Fail (모드가 켜진 채 off가 성공으로 보이지 않게)."""
     try:
         os.remove(STATE)
-    except OSError:
+    except FileNotFoundError:
         pass
+    except OSError as e:
+        raise Fail(1, "state_not_removed", f"상태 파일을 지우지 못했습니다. 자리 비움 모드가 꺼지지 않았습니다: {e}")
 
 
 class state_lock:
@@ -203,7 +208,7 @@ MASKS = [
     (re.compile(r"-----BEGIN[^-]*-----.*?(?:-----END[^-]*-----|$)"), "***"),
     (re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"), "***"),
     (re.compile(r"(?i)\bBearer\s+\S+"), "Bearer ***"),
-    (re.compile(r"(?i)(--?[\w-]*(?:password|passwd|secret|token|api[_-]?key)[\w-]*)[ =]+\S+"), r"\1 ***"),
+    (re.compile(r"""(?i)(--?[\w-]*(?:password|passwd|secret|token|api[_-]?key|credential)[\w-]*)[ =]+("[^"]*"?|'[^']*'?|\S+)"""), r"\1 ***"),
     (re.compile(r"""(?<![\w/.-])([A-Za-z_][\w.-]*)=("[^"]*"|'[^']*'|\S+)"""), r"\1=***"),
 ]
 
@@ -217,13 +222,18 @@ def mask(command):
 
 
 def queue_add(repo, reasons, command, session=None):
-    """거절한 명령 한 줄을 덧붙인다. 잠금 없이 O_APPEND 한 번 (guard가 기다리지 않게). 중복은 report가 묶는다."""
+    """거절한 명령 한 줄을 덧붙인다. 잠금 없이 O_APPEND 한 번 (guard가 기다리지 않게). 중복은 report가 묶는다.
+    일반 파일이 아니면(FIFO·장치·심볼릭 링크) 열다가 멈출 수 있어 비차단으로 열고 거부한다."""
+    import stat
     ensure_dir()
     key = hashlib.sha256((repo + "\0" + " ".join(command.split())).encode("utf-8")).hexdigest()[:16]
     line = json.dumps({"key": key, "ts": int(time.time()), "repo": repo, "reasons": list(reasons),
                        "command": mask(command), "session": session}, ensure_ascii=False) + "\n"
-    fd = os.open(QUEUE, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(QUEUE, flags, 0o600)
     try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("아침 목록이 일반 파일이 아닙니다")
         os.write(fd, line.encode("utf-8"))
     finally:
         os.close(fd)
