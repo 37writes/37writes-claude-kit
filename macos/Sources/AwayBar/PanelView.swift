@@ -26,6 +26,7 @@ struct PanelView: View {
         .frame(width: 340)
         .background(PanelBackground())
         .clipShape(RoundedRectangle(cornerRadius: PanelBackground.radius, style: .continuous))
+        .focusEffectDisabled()
         .onAppear { model.panelOpen = true; model.refresh() }
         .onDisappear { model.panelOpen = false }
     }
@@ -88,7 +89,7 @@ struct PanelView: View {
                     Label(why, systemImage: "exclamationmark.circle").font(.caption).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    powerRow.frame(maxWidth: .infinity, alignment: .leading)
+                    powerRow.fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -102,7 +103,7 @@ struct PanelView: View {
 
     private var powerRow: some View {
         let ac = model.status?.power.source == "ac"
-        return Label(ac ? "전원 연결됨 · \(endClock)까지 맥이 잠들지 않아요" : "전원 상태를 확인하지 못했어요",
+        return Label(ac ? "전원 연결됨 · 맥북을 연 채로 두면 \(endClock)까지 잠들지 않아요" : "전원 상태를 확인하지 못했어요",
                      systemImage: ac ? "powerplug" : "questionmark.circle")
             .font(.caption).foregroundStyle(.secondary)
     }
@@ -181,8 +182,9 @@ struct PanelView: View {
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain).disabled(model.busy)
-                Text("확인이 필요한 명령은 거절되어 목록에 남고, 질문은 보류됩니다.")
-                    .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                Text("맥북을 덮으면 잠들어 작업이 멈춰요. 연 채로 두세요. 확인이 필요한 명령과 질문은 보류되어 목록에 남습니다.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -326,13 +328,15 @@ private extension View {
 
 /// 패널 바탕: 시스템 메뉴처럼 뒤가 비치는 둥근 판. 상단바 창의 기본 바탕(불투명에 가까운 재질)은 걷어 낸다.
 struct PanelBackground: View {
-    static let radius: CGFloat = 16
+    static let radius: CGFloat = 26
 
     var body: some View {
         ZStack {
             WindowClearer()
             if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.regular, in: .rect(cornerRadius: Self.radius, style: .continuous))
+                // 맑은 유리 + 글자가 읽히게 옅은 바탕색
+                Color(nsColor: .windowBackgroundColor).opacity(0.22)
+                    .glassEffect(.clear, in: .rect(cornerRadius: Self.radius, style: .continuous))
             } else {
                 Material(material: .menu)
             }
@@ -373,7 +377,13 @@ private struct WindowClearer: NSViewRepresentable {
                 view.subviews.forEach(walk)
             }
             walk(root)
-            window.invalidateShadow()
+            // 창 그림자는 네모난 창 모양을 따라 테두리처럼 보인다 → 끈다. 남은 테두리 선도 지운다
+            window.hasShadow = false
+            func strip(_ view: NSView) {
+                if !view.isDescendant(of: mine) { view.layer?.borderWidth = 0 }
+                if view !== mine { view.subviews.forEach(strip) }
+            }
+            strip(root)
         }
     }
 
