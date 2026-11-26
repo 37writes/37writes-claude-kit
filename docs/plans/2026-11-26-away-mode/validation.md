@@ -80,3 +80,42 @@ pmset -g assertions | grep -Fc "pid $pid("
 실제 시작 2026-11-26 11:11:51 KST, 종료 예정 11:13:51. `on` exit 0, `active:true`, AC/open, `remaining_seconds:119`, `queue_count:0`, `warnings:[]`. 반환 PID **9294**의 실측 인자는 `caffeinate -i -s -t 119`, 해당 assertion **2개**. `status` exit 0, 동일 PID·종료 시각, `alive:true`. `off` exit 0, `ok:true, was_active:true, caffeinate_released:true, queue_count:0`. 직후 `pmset -g assertions` 자체 exit 0, **PID 9294 일치 0개**. 다른 PID에 신호를 보내지 않았다. 장시간 유휴 절전·뚜껑 동작, 자연 만료, 대화형 호스트 안에서 다음 일까지 이어지는 동작은 이 실기 시험의 범위가 아니다.
 
 최종 확인: 모든 시험용 임시 폴더를 정리한 뒤 원래 HOME의 `ls -d ~/.config/37writes-kit/away/`는 exit 1(경로 없음). `git status --short --untracked-files=all`은 이 보고서 한 파일만 표시했다. 구현 수정·커밋·외부 push·배포는 하지 않았다.
+
+## 재검증
+
+`60b4b04`에서 **macOS의 원래 F1~F4 재현 조건은 모두 통과**했다. 일반 명령 판정에서 권한이 넓어진 사례는 없었다. 다만 메뉴 앱용 `off` 실패 계약의 설명은 실제와 다르고(F5), F1의 기록 시간 제한은 Windows까지 보장하지 않는다(F6).
+
+| 재실행 명령 | 끝 코드 | ok | FAIL |
+|---|---:|---:|---:|
+| `sh scripts/test_guard.sh` | 0 | 97 | 0 |
+| `sh scripts/test_away.sh` | 0 | 103 | 0 |
+| `sh scripts/test_deploy_gate.sh` | 0 | 56 | 0 |
+| `sh scripts/test_plans.sh` | 0 | 32 | 0 |
+| `sh scripts/test_profile_check.sh` | 0 | 19 | 0 |
+| `claude plugin validate .` | 0 | 0 | 0 |
+
+셸 시험 합계 307개. 이전과 같이 각 실행의 HOME·TMPDIR을 격리했다. 플러그인 검증은 `ok`/`FAIL` 형식이 아니며 최종 진단은 `Validation passed with warnings`였다. 루트 CLAUDE.md 경고와 디렉터리 제출용 라이선스·아이콘 진단은 그대로다.
+
+직접 시험은 위 2절의 `aw`, `probe`와 새 `mktemp -d` HOME에서 진행했다. 모든 `probe`는 명령 문자열을 JSON으로 전달해 `python3 scripts/guard.py`만 실행했다. 실기 `on --for 2m --json`이 반환한 PID는 25097이었다.
+
+| 항목 | 재현 조건 | 실제 결과 |
+|---|---|---|
+| F1 기록 지연 | 켜진 상태에서 `mkfifo "$A/queue.jsonl"` 후 `probe 'git branch -D fixture'`의 벽시계 시간·판정을 측정. 이후 시험용 FIFO를 치우고 정상 파일로 검사 | 읽는 쪽 없이 **0.178초, exit 0, `deny`**, 사유에 “기록에 실패”. 훅 제한 15초 이내. 별도로 재실행한 `test_guard.sh`에서 지연 대역을 쓴 ≤10초 거절 시험도 통과했다. |
+| F2 삭제 실패 | `chmod 500 "$A"` → `aw off --json` → `aw status --json` → `chmod 700 "$A"` → `aw off --json` | 첫 `off`는 **exit 1, `ok:false, error:state_not_removed`**. 직후 `status`는 `active:true`, **`caffeinate.alive:false`**였다. 해제 시도 중 자식은 먼저 끝났으므로 파일 권한을 되돌리기 전에는 모드와 절전 방지 상태가 달랐다. 재시도는 exit 0, `was_active:true`, `caffeinate_released:true`. `pmset -g assertions`에서 해당 PID 일치 0개. |
+| F3 상태 권한 | `umask 022`로 `aw on --for 2m --json` 직후 `stat -f %Lp "$A/state.json"` | **600**. 최초 생성한 상태 파일이 설계와 일치했다. |
+| F4 따옴표 안 공백 | `probe`에 `git branch -D fixture`와 큰따옴표로 감싼 두 단어 `--password` 값, 작은따옴표로 감싼 두 단어 `--credential=` 값을 함께 전달. 비밀값 대신 `S5_PART_` 접두의 고정 표식을 사용 | exit 0 `deny`. 큐 파일과 `aw report --json` 모두 표식 0개, 보고서 1건. 미리보기는 `git branch -D fixture --password *** --credential ***`. 단순 인용 옵션에서 확인한 결과이며 임의 셸 문법 전체를 보증하지 않는다. |
+
+동일한 `git branch -D fixture` 입력은 꺼짐 `ask` → 켜짐(목록 FIFO여도) `deny` → 정상 `off` 후 `ask`, `git status`는 꺼짐·켜짐 모두 exit 0·무출력이었다. `git diff aa1fe5d...HEAD -- scripts/guard.py`에는 기존 판정 사유 제거 또는 `allow` 반환 추가가 없다.
+
+**F5 · 고치면 좋음 — `off` 실패 JSON 모양과 모드 상태 설명이 README와 다르다.** F2 조건에서 `aw off --json`의 실제 키는 `error,message,ok`다. README의 `off` 행은 실패 코드까지 적고도 JSON 칸에는 성공용 키만 제시한다. 또 “모드는 켜진 채”라고 단정하지만 이미 만료된 상태 파일도 삭제에 실패할 수 있다. 위 2절의 격리 HOME·함수에서 `state.lock`이 이미 있는 상태로 다음을 확인했다.
+
+```sh
+python3 -c 'import json,sys,time;t=int(time.time());json.dump(dict(started=t-120,until=t-60),open(sys.argv[1],"w"))' "$A/state.json"
+chmod 500 "$A"; aw off --json; aw status --json; chmod 700 "$A"
+```
+
+실제: `off`는 exit 1 `state_not_removed`, 뒤의 `status`는 exit 0 `active:false, expired:true`. 기대: 실패는 `{ok:false,error,message}`이고 상태 **파일**이 남는다는 사실을 문서화하며, 활성·절전 상태는 `status`로 확인하도록 안내한다. `remove_state()`의 오류 메시지도 활성 상태를 단정하지 않는 편이 정확하다.
+
+**F6 · 막아야 함(Windows까지 동일한 권한 비확장을 보장하려면) — F1 시간 제한의 플랫폼 공백.** 읽기 전용 확인: `rg -n 'SIGALRM|signal.alarm|away.queue_add' scripts/guard.py` 및 `rg -n '윈도우|다른 OS' README.md`. 기대: 지원 플랫폼에서 목록 기록 지연이 `deny` 전달을 막지 않는다. 실제: Windows Python에는 `SIGALRM`이 없어 4초 알람을 설치하지 않고 동기 `queue_add()`를 호출한다. 이 분기에는 별도 기록 제한 시간이 없으며 최종 `deny`는 기록 호출이 끝난 뒤 전송된다. 명시적인 `allow`가 추가된 것은 아니며, **Mac에서 고친 F1의 일부가 Windows에 남은 것**이다. Windows 실기나 호스트 시간 초과 후 명령 실행은 시험하지 않았다. 지원 범위를 유지하려면 기록 실패·지연 시에도 판정을 먼저 보장하는 대안이 필요하다.
+
+검증 종료: `git status --short`에는 이 보고서 수정만 있었고 실제 HOME의 `ls -d ~/.config/37writes-kit/away/`는 exit 1이었다. 임시 폴더는 정리했고 커밋·외부 push는 하지 않았다.

@@ -88,13 +88,13 @@ def save_state(st):
 
 
 def remove_state():
-    """상태 파일을 지운다. 지우지 못해 파일이 남으면 Fail (모드가 켜진 채 off가 성공으로 보이지 않게)."""
+    """상태 파일을 지운다. 지우지 못해 파일이 남으면 Fail (off가 성공으로 보이지 않게)."""
     try:
         os.remove(STATE)
     except FileNotFoundError:
         pass
     except OSError as e:
-        raise Fail(1, "state_not_removed", f"상태 파일을 지우지 못했습니다. 자리 비움 모드가 꺼지지 않았습니다: {e}")
+        raise Fail(1, "state_not_removed", f"상태 파일을 지우지 못했습니다 (지금 상태는 away.py status로 확인): {e}")
 
 
 class state_lock:
@@ -174,10 +174,22 @@ def start_caffeinate(seconds):
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     except OSError as e:
         raise Fail(4, "caffeinate_failed", f"caffeinate를 시작하지 못했습니다: {e}")
-    time.sleep(0.3)
-    info = proc_info(p.pid) if p.poll() is None else None
-    if not info:
-        raise Fail(4, "caffeinate_failed", "caffeinate가 바로 끝났습니다. 자리 비움 모드를 켜지 않았습니다")
+    # 실행 파일로 바뀐 것(ps 인자에 caffeinate)을 본 뒤 0.3초 더 살아 있어야 시작으로 본다.
+    # 부하로 늦게 뜨면 0.3초만 기다려서는 실행 전 프로세스를 "살아 있음"으로 기록한다 (off가 못 끝냄).
+    deadline, info = time.time() + 3, None
+    while time.time() < deadline and p.poll() is None:
+        info = proc_info(p.pid)
+        if info and "caffeinate" in info[1]:
+            break
+        info = None
+        time.sleep(0.05)
+    if info:
+        time.sleep(0.3)
+        info = proc_info(p.pid) if p.poll() is None else None
+    if not info or "caffeinate" not in info[1]:
+        if p.poll() is None:
+            p.terminate()
+        raise Fail(4, "caffeinate_failed", "caffeinate가 시작되지 않았거나 바로 끝났습니다. 자리 비움 모드를 켜지 않았습니다")
     return {"pid": p.pid, "lstart": info[0], "args": info[1]}
 
 

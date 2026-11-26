@@ -178,23 +178,24 @@ def decide(reasons, data, command):
         return "ask", text
     cwd = data.get("cwd") or os.getcwd()
     try:
-        # 기록이 멈춰도 훅 제한(15초) 전에 거절이 나가야 한다 (훅이 시간을 넘기면 명령이 실행된다)
-        import signal
-        if hasattr(signal, "SIGALRM"):
-            def late(*_):
-                raise TimeoutError("아침 목록 기록 시간 초과")
-            signal.signal(signal.SIGALRM, late)
-            signal.alarm(4)
-        away.queue_add(kitlib.git(cwd, "rev-parse", "--show-toplevel", timeout=3) or cwd, reasons, command,
-                       data.get("session_id"))
-        note = "아침 목록에 넣었습니다"
+        # 기록이 멈춰도 훅 제한(15초) 전에 거절이 나가야 한다 (훅이 시간을 넘기면 명령이 실행된다).
+        # 신호(SIGALRM)는 윈도우에 없어서 데몬 스레드 + join 제한으로 한다.
+        import threading
+        done = []
+
+        def record():
+            try:
+                away.queue_add(kitlib.git(cwd, "rev-parse", "--show-toplevel", timeout=3) or cwd, reasons, command,
+                               data.get("session_id"))
+                done.append(True)
+            except Exception:
+                pass
+        worker = threading.Thread(target=record, daemon=True)
+        worker.start()
+        worker.join(4)
+        note = "아침 목록에 넣었습니다" if done else "아침 목록 기록에 실패했으니 최종 보고에 직접 적으세요"
     except Exception:
         note = "아침 목록 기록에 실패했으니 최종 보고에 직접 적으세요"
-    finally:
-        try:
-            signal.alarm(0)
-        except Exception:
-            pass
     return "deny", (f"자리 비움 모드({until}까지): 이 명령은 사용자 확인이 필요해 {note}. "
                     f"바꾸거나 감싸서 다시 시도하지 말고 다른 일을 계속하세요 ({text})")
 

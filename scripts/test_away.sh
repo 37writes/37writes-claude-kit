@@ -46,6 +46,8 @@ wait
 EOF
 chmod +x "$T/bin/"*
 export PATH="$T/bin:$PATH"
+# 새로 만든 실행 파일의 첫 실행은 macOS가 느리게 띄울 수 있다 (0.3초 넘게 걸리면 "바로 끝남" 시험이 흔들린다). 미리 한 번씩 실행해 둔다.
+touch "$FAKE/caff_fail"; caffeinate; pmset -g batt >/dev/null 2>&1; ioreg >/dev/null 2>&1; rm -f "$FAKE/caff_fail"
 
 aw() { sh "$S/py.sh" "$S/away.py" "$@"; }
 # j <JSON> <파이썬 식(d)>: 참이면 성공

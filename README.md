@@ -99,7 +99,7 @@ push가 곧 배포인 레포에서 프로필에 정책 줄을 두면, 정책 안
 | 명령 | 끝 코드 | `--json` 출력 |
 |---|---|---|
 | `on --until HH:MM` \| `--for 3h` | 0 켬 · 2 인자 오류(`no_until` `bad_time` `too_long` `usage`) · 3 시작 거부(`on_battery` `lid_closed` `power_unknown`) · 4 `caffeinate_failed` · 1 그 밖 | status와 같은 모양 + `warnings`. 실패는 `{ok:false, error, message}` |
-| `off` | 0 (꺼져 있어도) · 1 `state_not_removed`(상태 파일을 지우지 못함, 모드는 켜진 채) | `{ok, was_active, caffeinate_released, queue_count}` |
+| `off` | 0 (꺼져 있어도) · 1 `state_not_removed`(상태 파일이 남음. 절전 방지는 이미 풀렸을 수 있으니 `status`로 확인) | `{ok, was_active, caffeinate_released, queue_count}`. 실패는 `{ok:false, error, message}` |
 | `status` | 0 | `{ok, active, expired, until, until_epoch, remaining_seconds, started, caffeinate:{pid, alive}, power:{source, lid}, queue_count, checks}`. 꺼져 있으면 시각은 `null`, 만료면 `expired:true` |
 | `report [--clear]` | 0 | `{ok, count, items:[{key, first, last, count, repo, reasons, command}]}` |
 
