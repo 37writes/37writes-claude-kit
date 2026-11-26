@@ -60,24 +60,38 @@ def run_logged(args, cwd, log, timeout, shell=False):
 
 
 SECTIONS = {"Resources", "Parameters", "Outputs", "Conditions", "Mappings", "Metadata", "Other Changes", "Template"}
-HEADER = re.compile(r"[A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,3}")
 CHANGE = re.compile(r"\[([^\]]*)\]\s*(\S*)")
 KINDS = re.compile(r"(AWS|Custom|Alexa)::\S+|Parameter|Output|Condition|Mapping|Metadata")
 
 
+NOISE = re.compile(r"✨|There were no differences|Hold on while|start: |success: |Synthesis time|\(NOTE: ")
+
+
 def unread_lines(out):
-    """해석하지 못한 줄: 맨 앞에서 시작하는 변경 표식·섹션 제목 중 아는 모양이 아닌 것 (하위 속성 줄은 보지 않는다)."""
-    bad = []
+    """해석하지 못한 줄. 아는 줄만 통과시킨다: `Stack <이름>`, 섹션 제목, 아는 종류의 추가·수정 줄과 그 아래 들여 쓴 속성 줄,
+    경고·안내, CDK의 진행 안내. 그 밖의 줄은 (들여 썼어도 변경 줄 아래가 아니면) 모두 해석 못 한 줄이다."""
+    bad, under_change = [], False
     for line in out.splitlines():
-        if not line or line[0].isspace():
+        if not line.strip():
             continue
+        if line[0].isspace():
+            if not under_change:
+                bad.append(line)
+            continue
+        under_change = False
+        text = line.strip()
         m = CHANGE.match(line)
         if m:
             mark, kind = m.group(1), m.group(2)
-            if mark.startswith(("Warning", "Info")) or (mark in ("+", "~") and KINDS.fullmatch(kind)):
+            if mark.startswith(("Warning", "Info")):
+                continue
+            if mark in ("+", "~") and KINDS.fullmatch(kind):
+                under_change = True
                 continue
             bad.append(line)
-        elif HEADER.fullmatch(line.strip()) and line.strip() not in SECTIONS and not re.fullmatch(r"Stack \S+", line.strip()):
+        elif text in SECTIONS or re.fullmatch(r"Stack \S+", text) or NOISE.match(text):
+            continue
+        else:
             bad.append(line)
     return bad
 

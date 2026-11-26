@@ -14,6 +14,7 @@ struct TicketDraft: Identifiable, Equatable {
 final class AwayModel: ObservableObject {
     @Published var status: AwayStatus?
     @Published var report: AwayReport?
+    @Published var reportError: String?
     @Published var message: String?          // 마지막 오류 (away.py의 message 그대로)
     @Published var busy = false
     @Published var kit: String?
@@ -92,7 +93,13 @@ final class AwayModel: ObservableObject {
                     self.status = nil
                     self.message = (error as? AwayFailure)?.message ?? error.localizedDescription
                 }
-                if case .success(let value) = rp { self.report = value }
+                switch rp {
+                case .success(let value):
+                    self.report = value
+                    self.reportError = nil
+                case .failure(let error):
+                    self.reportError = (error as? AwayFailure)?.message ?? error.localizedDescription
+                }
             }
         }
     }

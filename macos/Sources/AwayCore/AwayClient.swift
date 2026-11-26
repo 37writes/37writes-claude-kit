@@ -75,10 +75,13 @@ public struct AwayClient {
         return Output(code: p.terminationStatus, stdout: data)
     }
 
+    private struct Flag: Decodable { var ok: Bool; var error: String?; var message: String? }
+
     /// 유효한 JSON이고 ok가 참일 때만 값을 돌려준다. 아니면 away.py의 오류(또는 형식 오류)를 던진다.
     public static func decode<T: Decodable>(_ type: T.Type, from output: Output) throws -> T {
-        if let failure = try? JSONDecoder().decode(AwayFailure.self, from: output.stdout), !failure.ok {
-            throw failure
+        // ok를 먼저 본다: ok가 false면 다른 필드가 있든 없든 실패다
+        if let flag = try? JSONDecoder().decode(Flag.self, from: output.stdout), !flag.ok {
+            throw AwayFailure(error: flag.error ?? "failed", message: flag.message ?? "away.py가 실패를 알렸습니다 (끝 코드 \(output.code))")
         }
         guard output.code == 0, let value = try? JSONDecoder().decode(T.self, from: output.stdout) else {
             throw AwayFailure(error: "bad_output", message: "away.py 응답을 읽지 못했습니다 (끝 코드 \(output.code)). kit 폴더와 Python을 확인하세요")

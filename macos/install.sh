@@ -35,7 +35,10 @@ IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\
 codesign --force --sign "${IDENTITY:--}" "$STAGE/AwayBar.app"
 
 # 실행 중이면 끝내고 바꾼다 (자리 비움 모드 자체는 away.py 상태라 앱을 꺼도 그대로다)
-pkill -x AwayBar 2>/dev/null || true
+# 바꿀 그 번들에서 뜬 것만 끝낸다 (다른 경로에 시험 설치할 때 쓰던 앱을 닫지 않게)
+for pid in $(pgrep -x AwayBar 2>/dev/null); do
+  [ "$(ps -p "$pid" -o comm= 2>/dev/null)" = "$APP/Contents/MacOS/AwayBar" ] && kill "$pid" 2>/dev/null
+done
 mkdir -p "$(dirname "$APP")"
 rm -rf "$APP"
 cp -R "$STAGE/AwayBar.app" "$APP"

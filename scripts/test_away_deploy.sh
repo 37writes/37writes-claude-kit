@@ -162,12 +162,17 @@ printf 'touch ran; exit "$(cat code 2>/dev/null || echo 0)"\n' > "$R/t.sh"
 [ "$(deploys)" = 0 ] && ok "재발급된 티켓: 배포 0회" || no "재발급된 티켓으로 배포됨"
 expect "새 티켓 횟수 그대로·잠기지 않음" "$(aw status --json)" 'd["tickets"][0]["used"] == 0 and not d["tickets"][0]["locked"]'
 # F2: 아는 변경 줄과 모르는 변경 줄이 섞이면 배포하지 않는다
-for line in '[*] AWS::SQS::Queue Odd Odd1' '[~] Something Else X' 'Strange Changes' '[+] Unknown thing'; do
+for line in '[*] AWS::SQS::Queue Odd Odd1' '[~] Something Else X' 'Strange Changes' '[+] Unknown thing' \
+  'removing table Users' 'strange lowercase: thing' '┌───┬───┐'; do  # 뒤의 넷은 S5 검증 D1: 표식 없는 줄
   fresh --ticket "$R::Demo"
   printf 'Stack Demo\nResources\n[+] AWS::SQS::Queue Q Q123\n%s\n' "$line" > "$FAKE/diff"
   code "섞인 diff: $line" 4 dp run --stack Demo --cwd "$R/infra" --json
   [ "$(deploys)" = 0 ] && ok "섞인 diff: 배포 0회" || no "섞인 diff인데 배포됨: $line"
 done
+fresh --ticket "$R::Demo"   # 변경 줄 아래가 아닌 들여 쓴 줄
+printf 'Stack Demo\nResources\n   orphan indented line\n[+] AWS::SQS::Queue Q Q123\n' > "$FAKE/diff"
+code "섞인 diff: 변경 줄 밖의 들여 쓴 줄" 4 dp run --stack Demo --cwd "$R/infra" --json
+[ "$(deploys)" = 0 ] && ok "섞인 diff: 배포 0회" || no "들여 쓴 줄이 섞였는데 배포됨"
 fresh --ticket "$R::Demo"
 printf '[Warning at /Demo/Fn] deprecated\nStack Demo\nParameters\n[+] Parameter BootstrapVersion BootstrapVersion: {"Type":"String"}\nResources\n[~] AWS::Lambda::Function Fn FnABC\n └─ [~] Code\n     ├─ [-] old\n     └─ [+] new\nOutputs\n[+] Output Url Url: {"Value":"x"}\n\n✨  Number of stacks with differences: 1\n' > "$FAKE/diff"
 code "경고·매개변수·출력·하위 속성 줄이 있는 정상 diff" 0 dp run --stack Demo --cwd "$R/infra" --json

@@ -80,6 +80,11 @@ final class AwayCoreTests: XCTestCase {
             XCTAssertEqual(($0 as? AwayFailure)?.error, "bad_output")
         }
         XCTAssertThrowsError(try AwayClient.decode(AwayStatus.self, from: .init(code: 0, stdout: Data("Traceback".utf8))))
+        // ok:false면 오류 설명이 빠져 있어도, 끝 코드가 0이어도 실패 (S5 검증 D3)
+        let bare = #"{"ok": false, "was_active": true, "caffeinate_released": true}"#
+        XCTAssertThrowsError(try AwayClient.decode(AwayClient.OffResult.self, from: .init(code: 0, stdout: Data(bare.utf8)))) {
+            XCTAssertEqual(($0 as? AwayFailure)?.error, "failed")
+        }
         // ok 모양이어도 끝 코드가 0이 아니면 실패
         XCTAssertThrowsError(try AwayClient.decode(AwayReport.self, from: .init(code: 1, stdout: Data(#"{"ok": true, "count": 0, "items": [], "holds": [], "runs": []}"#.utf8))))
     }

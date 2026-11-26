@@ -197,7 +197,12 @@ struct PanelView: View {
                         }
                 }
             }
-            if empty { Text("없음").font(.caption).foregroundStyle(.secondary) }
+            if let failed = model.reportError {
+                Text("목록을 읽지 못했습니다" + (r == nil ? "" : " (아래는 이전에 읽은 내용)") + ": " + failed)
+                    .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            } else if empty {
+                Text(r == nil ? "읽는 중" : "없음").font(.caption).foregroundStyle(.secondary)
+            }
             if let runs = r?.runs, !runs.isEmpty {
                 subtitle("실행된 배포 \(runs.count)")
                 ForEach(runs) { run in
