@@ -1,4 +1,5 @@
-"""PreToolUse(Bash): 되돌리기 어렵거나 외부로 나가는 명령은 실행 전에 사용자 확인을 받는다."""
+"""PreToolUse(Bash): 되돌리기 어렵거나 외부로 나가는 명령은 실행 전에 사용자 확인을 받는다.
+자리 비움 모드(away.py)가 켜져 있으면 확인 창 대신 거절하고 아침 목록에 남긴다."""
 import os
 import re
 import shlex
@@ -149,6 +150,43 @@ def record_reasons(command):
     return []
 
 
+AWAY_FILES = re.compile(r"37writes-kit[/\\]+away")
+
+
+def away_reasons(command):
+    """자리 비움 상태·아침 목록 폴더를 away.py 밖에서 건드리는 명령 (best-effort). 리다이렉트 없는 읽기는 통과."""
+    for segment in re.split(r"\n|&&|\|\||;|\|", command):
+        if not AWAY_FILES.search(segment) or "away.py" in segment:
+            continue
+        words = command_words(segment)
+        if not (words and words[0] in READ_ONLY and ">" not in segment):
+            return ["자리 비움 상태·아침 목록(37writes-kit/away)은 away.py로만 바꾼다"]
+    return []
+
+
+def decide(reasons, data, command):
+    """평소에는 ask. 자리 비움 모드가 유효하면 deny + 아침 목록 (권한은 넓히지 않고 확인 창만 없앤다).
+    상태를 못 읽으면(없음·깨짐·만료·오류) ask, 유효한데 목록 쓰기가 실패해도 deny."""
+    text = "37writes-kit 확인 필요: " + "; ".join(reasons)
+    try:
+        import away
+        state = away.active()
+        until = away.hhmm(state["until"]) if state else None
+    except Exception:
+        state = None
+    if not state:
+        return "ask", text
+    cwd = data.get("cwd") or os.getcwd()
+    try:
+        away.queue_add(kitlib.git(cwd, "rev-parse", "--show-toplevel", timeout=3) or cwd, reasons, command,
+                       data.get("session_id"))
+        note = "아침 목록에 넣었습니다"
+    except Exception:
+        note = "아침 목록 기록에 실패했으니 최종 보고에 직접 적으세요"
+    return "deny", (f"자리 비움 모드({until}까지): 이 명령은 사용자 확인이 필요해 {note}. "
+                    f"바꾸거나 감싸서 다시 시도하지 말고 다른 일을 계속하세요 ({text})")
+
+
 def dangerous_rm(command):
     """rm에 -r과 -f가 (붙여 쓰든 나눠 쓰든) 있고 대상이 루트/홈/현재 폴더 전체인가."""
     for segment in re.split(r"&&|\|\||;|\|", command):
@@ -180,11 +218,13 @@ if dangerous_rm(command):
     reasons.append("rm -rf 대상이 루트/홈/현재 폴더 전체입니다")
 reasons += deploy_reasons(command)
 reasons += record_reasons(command)
+reasons += away_reasons(command)
 if reasons:
+    decision, text = decide(reasons, data, command)
     kitlib.emit({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
-            "permissionDecisionReason": "37writes-kit 확인 필요: " + "; ".join(reasons),
+            "permissionDecision": decision,
+            "permissionDecisionReason": text,
         }
     })
