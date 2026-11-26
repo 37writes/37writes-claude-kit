@@ -33,8 +33,8 @@ enum Snapshot {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let model = AwayModel()
-        let host = NSHostingView(rootView: PanelView(model: model).background(Color(nsColor: .windowBackgroundColor)))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 372, height: 600), styleMask: [.borderless], backing: .buffered, defer: false)
+        let host = NSHostingView(rootView: PanelView(model: model).fixedSize().background(Color(nsColor: .windowBackgroundColor)))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 10), styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = host
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             if action == "start" {

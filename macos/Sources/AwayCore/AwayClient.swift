@@ -22,19 +22,22 @@ public enum KitLocator {
         return found
     }
 
-    public static func candidates(home: String, saved: String?, env: [String: String], installedJSON: Data?) -> [String] {
+    public static func candidates(home: String, saved: String?, env: [String: String], installedJSON: Data?, bundled: String? = nil) -> [String] {
         var list: [String] = []
         if let p = env["AWAYBAR_KIT"], !p.isEmpty { list.append(p) }
         if let p = saved, !p.isEmpty { list.append(p) }
         if let data = installedJSON { list += installedPaths(json: data) }
         list.append((home as NSString).appendingPathComponent("Documents/dev/37writes-claude-kit"))
+        // 마지막: 설치할 때 앱 안에 넣어 둔 사본 (macOS가 ~/Documents 읽기를 막아도 앱이 동작하게)
+        if let p = bundled, !p.isEmpty { list.append(p) }
         return list
     }
 
     public static func locate(home: String = NSHomeDirectory(), saved: String? = UserDefaults.standard.string(forKey: defaultsKey),
-                              env: [String: String] = ProcessInfo.processInfo.environment, fm: FileManager = .default) -> String? {
+                              env: [String: String] = ProcessInfo.processInfo.environment, fm: FileManager = .default,
+                              bundled: String? = Bundle.main.resourcePath.map { ($0 as NSString).appendingPathComponent("kit") }) -> String? {
         let installed = fm.contents(atPath: (home as NSString).appendingPathComponent(".claude/plugins/installed_plugins.json"))
-        return candidates(home: home, saved: saved, env: env, installedJSON: installed).first { isKit($0, fm: fm) }
+        return candidates(home: home, saved: saved, env: env, installedJSON: installed, bundled: bundled).first { isKit($0, fm: fm) }
     }
 }
 

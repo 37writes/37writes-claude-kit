@@ -12,6 +12,9 @@ BIN="$(swift build -c release --show-bin-path)/AwayBar"
 STAGE=$(mktemp -d); trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/AwayBar.app/Contents/MacOS"
 cp "$BIN" "$STAGE/AwayBar.app/Contents/MacOS/AwayBar"
+# away.py 사본을 앱 안에 넣는다: macOS가 앱의 ~/Documents 읽기를 막으면 kit 폴더를 못 찾는다 (읽을 수 있으면 kit 폴더가 우선)
+mkdir -p "$STAGE/AwayBar.app/Contents/Resources/kit/scripts"
+cp ../scripts/away.py ../scripts/kitlib.py "$STAGE/AwayBar.app/Contents/Resources/kit/scripts/"
 cat > "$STAGE/AwayBar.app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
