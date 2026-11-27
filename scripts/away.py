@@ -580,7 +580,8 @@ def observe_old(data, now=None):
         note = stale_note(st)
         rec.update(noted_id=st.get("id"), noted_ts=int(now))
     cwd = str(data.get("cwd") or rec.get("cwd") or "")
-    if note or now - num(rec.get("seen_ts")) > STALE_SEEN_EVERY or rec.get("session") != sid or rec.get("cwd") != cwd:
+    # 쓰기는 5분에 한 번 (안내를 넣을 때와 세션이 바뀐 때는 바로). 폴더만 바뀐 호출마다 쓰지 않는다
+    if note or now - num(rec.get("seen_ts")) > STALE_SEEN_EVERY or rec.get("session") != sid:
         rec.update(pid=pid, session=sid, cwd=cwd, seen_ts=int(now))
         try:
             ensure_dir()
@@ -847,7 +848,7 @@ def cmd_on(args):
     now = time.time()
     end = parse_end(args.until, args.duration, now)
     checks, warnings = [], []
-    mode = args.mode or "away"
+    mode = "away" if args.mode is None else args.mode  # 생략만 기본값. 빈 값은 오류다 (비어 있는 설정 값이 자리 비움을 켜지 않게)
     if mode not in ("away", "awake"):
         raise Fail(2, "usage", f"--mode는 away 또는 awake입니다 (받은 값: {mode})")
     if mode == "awake" and args.ticket:
@@ -882,17 +883,21 @@ def cmd_on(args):
         prune_sessions(now)
         prune_stale(now)
         caff = start_caffeinate(max(1, int(end - time.time()))) if is_mac() else None
+        new = {"version": 1, "id": f"{int(now)}-{os.getpid()}", "started": now, "until": end, "caffeinate": caff, "checks": checks}
+        # 순서: 새 상태를 쓴다 → 이전 절전 방지를 끝낸다 → 다른 모드의 파일을 지운다 (상태 파일은 하나만 남긴다).
+        # 새 상태를 못 쓰면 방금 띄운 절전 방지를 거두고 이전 모드는 그대로 둔다 (상태에 없는 caffeinate가 남으면 off가 끄지 못한다).
+        try:
+            if mode == "awake":
+                save_state(new, AWAKE)
+            else:
+                save_state(dict(new, tickets=tickets))
+        except OSError as e:
+            left = "" if stop_caffeinate(caff) else ". 새로 띄운 절전 방지(caffeinate)가 끝났는지 확인하지 못했습니다: pmset -g assertions"
+            raise Fail(1, "state_not_saved", f"상태 파일을 쓰지 못해 켜지 않았습니다 (이전 상태는 그대로, away.py status로 확인): {e}{left}")
         for old in olds:
             if old and not stop_caffeinate(old.get("caffeinate")):
                 warnings.append("이전 절전 방지(caffeinate)가 끝났는지 확인하지 못했습니다")
-        new = {"version": 1, "id": f"{int(now)}-{os.getpid()}", "started": now, "until": end, "caffeinate": caff, "checks": checks}
-        # 두 상태 파일 중 하나만 남긴다: 새 것을 쓴 뒤 다른 모드의 파일을 지운다
-        if mode == "awake":
-            save_state(new, AWAKE)
-            remove_state()
-        else:
-            save_state(dict(new, tickets=tickets))
-            remove_state(AWAKE)
+        remove_state(STATE if mode == "awake" else AWAKE)
     out = status_obj()
     if mode == "away" and out["stale_sessions"]:
         warnings.append(stale_warning(out["stale_sessions"]))
@@ -903,7 +908,7 @@ def cmd_on(args):
     left = int(end - now)
     print(f"{'잠자기 방지' if mode == 'awake' else '자리 비움 모드'} 켬: {hhmm(end)}까지 ({left // 3600}시간 {left % 3600 // 60}분)")
     if caff:
-        print(f"- 절전 방지: caffeinate pid {caff['pid']}. {LID_NOTE}")
+        print(f"- 절전 방지: caffeinate pid {caff['pid']}" + ("" if BATTERY_NOTE in warnings else f". {LID_NOTE}"))
     if mode == "awake":
         print("- 자리 비움이 아닙니다: 확인 창과 질문은 평소대로 뜹니다 (떠날 때는 away.py on --mode away)")
     else:

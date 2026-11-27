@@ -75,7 +75,7 @@ tier: T1
 - guard는 시간을 넘기면 명령이 실행된다 → 표식 없는 호출에서만, 판정을 계산한 뒤, 전체 try/except, 외부 명령 없음.
 - 같은 프로세스의 guard 여러 개가 동시에 기록 → 임시 파일 + replace, 값이 같아 잃어도 무해 (안내가 한 번 더 나갈 수 있다).
 - kit 없이 뜬 Claude, Codex·Kimi 탭, Bash를 안 부른 예전 탭은 보이지 않는다 → README·앱 문구에 한계로 적는다.
-- 예전 앱(재설치 전)은 awake를 모른다: 켜져 있어도 "꺼짐"으로 보이고 끄지 못한다 (`away.py off` 또는 시간이 지나면 끝) → `sh macos/install.sh` 다시.
+- 예전 앱(재설치 전)은 awake를 모른다 → `sh macos/install.sh` 다시. 처음에는 "꺼짐으로 보이고 끄지 못한다"고만 적었는데 그것은 앱이 예전 `away.py`(앱 안 사본)를 읽을 때이고, 새 kit를 읽으면 `active:true`라 **"자리 비움 중 · 확인이 필요한 명령은 보류"로 잘못 보인다** (끄기는 된다, S4 D1). 예전 앱은 고칠 수 없으므로 S5에서 kit를 갱신하는 즉시 앱을 다시 설치하고 README에 두 경우를 적는다.
 - 예전 `away.py on`(예전 앱)은 `awake.json`을 모른 채 자리 비움을 켠다 → 두 파일이 같이 있으면 자리 비움이 우선, caffeinate가 둘일 수 있다 (둘 다 시간이 되면 끝난다).
 
 ## 기획 반박
@@ -93,7 +93,14 @@ tier: T1
   - 결과: `claude plugin validate .` 통과(기존 경고만), harness 161줄. harness·`orca_context.py`의 다른 모델 예시가 아직 "Codex·agy"다 (이 환경은 Codex·Kimi) → 여러 컴퓨터에 퍼지는 문구라 여기서 바꾸지 않고 남은 일로.
 - [x] S3. AwayBar 앱: 모드 선택, 재시작 권장 표시 — Coder — `(cd macos && swift test)` 통과, `--snapshot`으로 두 모드 화면 확인
   - 결과: `swift test` 13개 통과 (모드·예전 탭 읽기, 0.23 출력 호환, 배터리 판정 표, 실제 away.py로 자리 비움 → 잠자기만 막기 → 끄기). 격리 HOME + 가짜 전원 명령으로 `--snapshot [--mode awake]` 12장을 찍어 확인: 모드 선택, 배터리에서 자리 비움은 막고 잠자기만 막기는 주의만, 잠자기 방지 중 화면, 재시작 권장 카드(자리 비움에서만). 켤 모드는 저장하지 않고 패널을 열 때마다 자리 비움으로 돌아간다 (잠자기만 막기가 남은 채 떠나면 확인 창에서 멈춘다). README 캡처 두 장 갱신.
-- [ ] S4. 독립 검증 — Validator(Codex gpt-6.2-astra) — 테스트 재실행, 변경 범위, 직접 고른 실패 시나리오 1~3개, 워커 권한 창 → `deny --reason` 실제 확인(안 되면 미검증으로)
+- [x] S4. 독립 검증 — Validator(Codex gpt-6.2-astra) — 테스트 재실행, 변경 범위, 직접 고른 실패 시나리오 1~3개, 워커 권한 창 → `deny --reason` 실제 확인(안 되면 미검증으로)
+  - 결과: 검증자 Codex `global.openai.gpt-6.2-astra` (worker-start 응답의 model + 워커가 `worker-show --full`로 확인해 보고, dispatch `ctx_6667395c25c0`. 정산 뒤 `projection.provider`는 비어 있었다). 지정 검사 8개 614건 실패 0, 범위·시크릿 이상 없음. 결함 8건(중요 3, 사소 5)을 찾아 모두 처리했다.
+    - D1 (중요) 예전 앱 + 새 kit: awake를 "자리 비움 중"으로 보임 → 예전 앱은 못 고친다. README·리스크를 사실대로 고치고 S5에서 갱신 즉시 재설치.
+    - D2 (중요) 모드를 바꾸다 새 상태 저장이 실패하면 이전 caffeinate는 이미 끝나고 새 것은 상태에 없이 남아 `off`가 "해제됨"이라고 했다 → 순서를 새 상태 쓰기 → 이전 것 끝내기로 바꾸고, 못 쓰면 새 caffeinate를 거두고 `state_not_saved`(끝 코드 1)로 이전 모드를 그대로 둔다.
+    - D3 (중요) `--mode ""`가 자리 비움을 켰다 (`args.mode or "away"`) → 생략만 기본값, 빈 값은 `usage`(2).
+    - D4 예전 탭 기록이 폴더가 바뀔 때마다 다시 쓰였다 → 5분에 한 번(안내·세션 변경 때만 바로). D8 배터리 awake의 켜기 안내에 "전원 연결 동안만"과 배터리 주의가 같이 나옴 → 배터리면 뒤 문장만.
+    - D5·D6·D7·D8(문서): 재안내 30분, awake에서도 이전 아침 목록 건수 알림은 나옴, 추천 안내는 여러 개 고르기 제외, 뚜껑 정보 없는 데스크톱은 켬 → README·CLAUDE.md 문장 수정.
+    - 새 테스트 13건 (`test_away.sh` 230). **워커 권한 창 → `deny --reason`은 Codex에서 미검증**: worktree 밖 `touch`가 창 없이 실행됐다 (Orca의 Codex 워커는 권한 창을 띄우지 않는 설정). 원래 사건의 에이전트(Kimi·opencode)로 한 번 더 확인한다.
 - [ ] S5. 병합·push·본체 pull·앱 재설치 — 지휘 세션 — `away.py status --json`에 `mode`·`stale_sessions`, 앱이 찾은 kit 경로가 본체인지, 앱 화면에 모드 선택
 
 ## 완료 기준

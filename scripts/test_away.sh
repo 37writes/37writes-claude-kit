@@ -396,7 +396,28 @@ expect "bad_ticket" "$OUT" 'd["ok"] is False and d["error"] == "bad_ticket"'
 code "모르는 모드" 2 aw on --for 1h --mode nap --json
 expect "usage" "$OUT" 'd["error"] == "usage"'
 [ ! -e "$A/awake.json" ] && [ ! -e "$A/state.json" ] && [ "$(alive)" = 0 ] && ok "인자 오류에서는 상태·caffeinate 없음" || no "인자 오류 뒤 상태가 남음"
+# 빈 모드 값은 생략이 아니다 (S4 D3): 잠자기 방지를 자리 비움으로 바꾸지 않는다
+aw on --for 1h --mode awake >/dev/null
+code "빈 모드 값은 인자 오류" 2 aw on --for 1h --mode "" --json
+expect "usage (빈 값)" "$OUT" 'd["error"] == "usage"'
+expect "기존 잠자기 방지는 그대로" "$(aw status --json)" 'd["mode"] == "awake" and d["caffeinate"]["alive"] is True'
+[ "$(alive)" = 1 ] && ok "caffeinate 하나 그대로" || no "빈 모드 값 뒤 caffeinate 수" "$(alive)"
+reset
+# 모드를 바꾸다 새 상태를 쓰지 못하면 (S4 D2): 새로 띄운 caffeinate를 거두고 이전 모드는 그대로
+aw on --for 1h >/dev/null
+chmod 500 "$A"
+code "상태를 못 쓰면 켜지 않음" 1 aw on --for 1h --mode awake --json
+expect "state_not_saved" "$OUT" 'd["ok"] is False and d["error"] == "state_not_saved"'
+chmod 700 "$A"
+expect "이전 자리 비움과 절전 방지가 그대로" "$(aw status --json)" 'd["active"] is True and d["mode"] == "away" and d["caffeinate"]["alive"] is True'
+[ "$(alive)" = 1 ] && ok "새로 띄운 caffeinate를 거둠" || no "저장 실패 뒤 caffeinate 수" "$(alive)"
+code "그 뒤 off" 0 aw off --json
+expect "off가 해제를 확인" "$OUT" 'd["caffeinate_released"] is True'
+[ "$(alive)" = 0 ] && ok "남은 caffeinate 없음" || no "off 뒤 caffeinate가 남음" "$(alive)"
+reset
 echo battery > "$FAKE/batt"
+aw on --for 1h --mode awake > "$T/out" 2>&1; aw off >/dev/null
+grep -q "키 입력이 없을 때의 잠자기만" "$T/out" && ! grep -q "전원 연결·뚜껑 열림 동안만" "$T/out" && ok "배터리 awake 안내가 서로 어긋나지 않음" || no "배터리 awake 안내" "$(cat "$T/out")"
 code "awake는 배터리에서도 켜짐" 0 aw on --for 1h --mode awake --json
 expect "배터리 주의 + power 점검 false" "$OUT" 'd["active"] and d["mode"] == "awake" and any("배터리" in w and "키 입력이 없을 때의 잠자기만" in w for w in d["warnings"]) and [c["ok"] for c in d["checks"] if c["name"] == "power"] == [False]'
 code "그 상태에서 away로 바꾸려 하면 거부" 3 aw on --for 1h --json
@@ -430,6 +451,8 @@ guard "$OLD" o1 "$T/repo/sub" 'git status' --schema 1
 guard "$OLD" o1 "$T/repo/sub" 'git status'
 [ "$(decision)" = none ] && [ -f "$A/stale/pid-$OLD.json" ] && ok "표식 없는 호출: 꺼져 있으면 출력 없이 기록만" || no "표식 없는 호출 기록" "$OUT $(ls "$A/stale" 2>&1)"
 [ "$(stat -f %Lp "$A/stale")" = 700 ] && [ "$(stat -f %Lp "$A/stale/pid-$OLD.json")" = 600 ] && ok "기록 0600, 폴더 0700" || no "stale 권한"
+guard "$OLD" o1 "$T/repo" 'git status'
+j "$(cat "$A/stale/pid-$OLD.json")" 'd["cwd"].endswith("/repo/sub")' && ok "폴더만 바뀐 호출은 5분 안에 다시 쓰지 않음 (S4 D4)" || no "폴더가 바뀔 때마다 기록을 다시 씀" "$(cat "$A/stale/pid-$OLD.json")"
 code "기록이 있는 status" 0 aw status --json
 expect "stale_sessions: 살아 있는 프로세스 (basis pid, 작업 폴더)" "$OUT" 'len(d["stale_sessions"]) == 1 and d["stale_sessions"][0]["session"] == "o1" and d["stale_sessions"][0]["repo"].endswith("/repo") and d["stale_sessions"][0]["cwd"].endswith("/repo/sub") and d["stale_sessions"][0]["basis"] == "pid" and set(d["stale_sessions"][0]) == {"session","repo","cwd","seen_at","basis"} and d["sessions"] == []'
 aw status | grep -q "재시작 권장: repo (kit 업데이트 전에 시작한 탭" && ok "status 텍스트에 재시작 권장" || no "status 텍스트" "$(aw status)"
