@@ -127,7 +127,7 @@ code "status --json" 0 aw status --json
 expect "status 키 고정" "$OUT" "set(d) == $KEYS"
 expect "status 값·타입" "$OUT" 'd["active"] is True and type(d["until"]) is str and "T" in d["until"] and d["until"][-6] in "+-" and type(d["until_epoch"]) is int and type(d["started"]) is str and d["power"] == {"source": "ac", "lid": "open"} and d["queue_count"] == 0 and {c["name"] for c in d["checks"]} >= {"power", "lid"}'
 aw status | grep -q "켜짐" && ok "status 텍스트" || no "status 텍스트"
-aw on --for 1h | grep -q "뚜껑을 닫으면 잠듭니다" && ok "켤 때 뚜껑 안내 한 줄" || no "뚜껑 안내"
+aw on --for 1h | grep -q "뚜껑을 닫으면 잠듭니다. 전원을 뽑으면 키 입력이 없을 때의 잠자기만" && ok "켤 때 뚜껑·전원 안내 한 줄" || no "뚜껑 안내"
 [ "$(alive)" = 1 ] && ok "다시 켜면 caffeinate는 하나로 교체" || no "교체 뒤 caffeinate 수: $(alive)"
 code "off" 0 aw off --json
 expect "off JSON" "$OUT" 'd == {"ok": True, "was_active": True, "mode": "away", "caffeinate_released": True, "queue_count": 0}'
@@ -417,7 +417,7 @@ expect "off가 해제를 확인" "$OUT" 'd["caffeinate_released"] is True'
 reset
 echo battery > "$FAKE/batt"
 aw on --for 1h --mode awake > "$T/out" 2>&1; aw off >/dev/null
-grep -q "키 입력이 없을 때의 잠자기만" "$T/out" && ! grep -q "전원 연결·뚜껑 열림 동안만" "$T/out" && ok "배터리 awake 안내가 서로 어긋나지 않음" || no "배터리 awake 안내" "$(cat "$T/out")"
+grep -q "키 입력이 없을 때의 잠자기만" "$T/out" && ! grep -q "전원을 뽑으면" "$T/out" && ok "배터리 awake 안내가 서로 어긋나지 않음" || no "배터리 awake 안내" "$(cat "$T/out")"
 code "awake는 배터리에서도 켜짐" 0 aw on --for 1h --mode awake --json
 expect "배터리 주의 + power 점검 false" "$OUT" 'd["active"] and d["mode"] == "awake" and any("배터리" in w and "키 입력이 없을 때의 잠자기만" in w for w in d["warnings"]) and [c["ok"] for c in d["checks"] if c["name"] == "power"] == [False]'
 code "그 상태에서 away로 바꾸려 하면 거부" 3 aw on --for 1h --json
