@@ -5,6 +5,8 @@
 S=$(cd "$(dirname "$0")" && pwd)
 T=$(cd "$(mktemp -d)" && pwd -P)
 export HOME="$T/home" FAKE="$T/fake"
+# Orca 워커 탭·Claude 세션 안에서 돌려도 결과가 같게 (워커 환경이면 Stop 재개 시험이 통과로 빠진다)
+unset ORCA_STRUCTURED_SESSION ORCA_AGENT_SESSION_ID CLAUDE_PID
 mkdir -p "$HOME" "$FAKE" "$T/bin"
 A="$HOME/.config/37writes-kit/away"
 cleanup() { for p in $(cat "$FAKE/pids" 2>/dev/null); do kill "$p" 2>/dev/null; done; rm -rf "$T"; }
@@ -115,10 +117,10 @@ expect "caffeinate_failed" "$OUT" 'd["error"] == "caffeinate_failed"'
 reset
 
 # ── on → status → off ──
-KEYS='{"ok","active","expired","until","until_epoch","remaining_seconds","started","caffeinate","power","queue_count","checks","holds_count","sessions","tickets","ticket_candidates"}'
+KEYS='{"ok","active","expired","until","until_epoch","remaining_seconds","started","caffeinate","power","queue_count","checks","holds_count","sessions","tickets","ticket_candidates","mode","stale_sessions"}'
 code "on --for 2h" 0 aw on --for 2h --json
 expect "on JSON: status 키 + warnings" "$OUT" "set(d) == $KEYS | {'warnings'}"
-expect "on: 켜짐, 남은 초 약 7200" "$OUT" 'd["ok"] is True and d["active"] is True and d["expired"] is False and 7100 < d["remaining_seconds"] <= 7200'
+expect "on: 켜짐, 남은 초 약 7200, 기본 모드 away" "$OUT" 'd["ok"] is True and d["active"] is True and d["mode"] == "away" and d["stale_sessions"] == [] and d["expired"] is False and 7100 < d["remaining_seconds"] <= 7200'
 expect "on: caffeinate 살아 있음" "$OUT" 'type(d["caffeinate"]["pid"]) is int and d["caffeinate"]["alive"] is True'
 grep -q -- "-i -s -t 7[12][0-9][0-9]" "$FAKE/args" && ! grep -q -- "-d" "$FAKE/args" && ok "caffeinate -i -s -t <남은 초> (-d 없음)" || no "caffeinate 인자" "$(cat "$FAKE/args")"
 code "status --json" 0 aw status --json
@@ -128,12 +130,12 @@ aw status | grep -q "켜짐" && ok "status 텍스트" || no "status 텍스트"
 aw on --for 1h | grep -q "뚜껑을 닫으면 잠듭니다" && ok "켤 때 뚜껑 안내 한 줄" || no "뚜껑 안내"
 [ "$(alive)" = 1 ] && ok "다시 켜면 caffeinate는 하나로 교체" || no "교체 뒤 caffeinate 수: $(alive)"
 code "off" 0 aw off --json
-expect "off JSON" "$OUT" 'd == {"ok": True, "was_active": True, "caffeinate_released": True, "queue_count": 0}'
+expect "off JSON" "$OUT" 'd == {"ok": True, "was_active": True, "mode": "away", "caffeinate_released": True, "queue_count": 0}'
 [ "$(alive)" = 0 ] && [ ! -e "$A/state.json" ] && ok "off 뒤 caffeinate 종료·상태 삭제" || no "off 뒤 정리 안 됨 (alive=$(alive))"
 code "꺼진 상태의 status" 0 aw status --json
-expect "꺼짐: 시각은 null, 남은 초 0" "$OUT" 'd["active"] is False and d["expired"] is False and d["until"] is None and d["until_epoch"] is None and d["started"] is None and d["remaining_seconds"] == 0 and d["caffeinate"] == {"pid": None, "alive": False} and d["checks"] == []'
+expect "꺼짐: 시각은 null, 남은 초 0" "$OUT" 'd["active"] is False and d["mode"] is None and d["expired"] is False and d["until"] is None and d["until_epoch"] is None and d["started"] is None and d["remaining_seconds"] == 0 and d["caffeinate"] == {"pid": None, "alive": False} and d["checks"] == []'
 code "꺼진 상태의 off" 0 aw off --json
-expect "was_active false" "$OUT" 'd["was_active"] is False and d["caffeinate_released"] is True'
+expect "was_active false" "$OUT" 'd["was_active"] is False and d["mode"] is None and d["caffeinate_released"] is True'
 
 # ── --until HH:MM ──
 HM=$(python3 -c 'import datetime;print((datetime.datetime.now()+datetime.timedelta(minutes=90)).strftime("%H:%M"))')
@@ -257,7 +259,15 @@ if sys.argv[1] == "Stop":
 if sys.argv[1] == "PreToolUse":
     d["tool_name"] = sys.argv[3] or "AskUserQuestion"
     d["tool_input"] = {"questions": [{"question": "어느 이름으로 할까요? --token HOLD_MARKER", "header": "이름", "options": []}]}
-print(json.dumps(d))' "$1" "$2" "${3:-}" "${4:-0}" "$T" "$TR" | aw hook)
+    if len(sys.argv) > 7 and sys.argv[7]:
+        d["tool_input"] = {"questions": json.loads(sys.argv[7])}
+print(json.dumps(d))' "$1" "$2" "${3:-}" "${4:-0}" "$T" "$TR" "${QS:-}" | aw hook)
+}
+ask() {  # ask <질문 목록 JSON> → OUT (질문 창 훅), REASON (거절 이유)
+  QS=$1; hook PreToolUse q1; QS=
+  REASON=$(python3 -c 'import json,sys
+try: print(json.loads(sys.argv[1])["hookSpecificOutput"]["permissionDecisionReason"])
+except Exception: print("")' "$OUT")
 }
 tools() {  # 도구 호출 N건: 공백 없는 JSON과 공백 있는 JSON을 번갈아 쓴다 (S2 검증 F4), 글 속의 같은 글자는 세지 않는다
   n=0; echo '{"type": "user", "message": {"content": [{"type": "tool_result", "content": "{\"type\":\"tool_use\"}"}]}}' >> "$TR"
@@ -302,4 +312,169 @@ expect "다시 켜면(새 회차 id) 재개 횟수 초기화" "$OUT" 'd["decisio
 aw off >/dev/null
 code "report --clear" 0 aw report --clear --json
 expect "clear 뒤 holds도 0" "$(aw report --json)" 'd["holds"] == []'
+reset
+
+# ── 질문 창 거절 안내의 추천 선택지 (0.24) ──
+in_reason() { case "$REASON" in *"$2"*) ok "$1" ;; *) no "$1" "$REASON" ;; esac; }
+not_in_reason() { case "$REASON" in *"$2"*) no "$1" "$REASON" ;; *) [ -n "$REASON" ] && ok "$1" || no "$1 (거절 이유 없음)" "$OUT" ;; esac; }
+aw on --for 1h >/dev/null
+ask '[{"question": "어느 저장소를 쓸까요?", "options": [{"label": "SQLite (Recommended)"}, {"label": "Postgres"}]}]'
+in_reason "추천이 하나면 이름을 적음" "추천 선택지: SQLite."
+in_reason "추천이 있어도 승인 사항은 보류하라고 적음" "배포·삭제·권한·push 승인이나 사용자가 답을 기다리라고 한 것은 추천이 있어도 정하지 말고"
+ask '[{"question": "형식은?", "options": [{"label": "JSON"}, {"label": "YAML (추천)"}]}]'
+in_reason "한국어 표시 (추천)" "추천 선택지: YAML."
+ask '[{"question": "형식은?", "options": [{"label": "JSON"}, {"label": "YAML"}]}]'
+not_in_reason "추천 표시가 없으면 적지 않음" "추천 선택지"
+in_reason "추천이 없으면 예전 안내 (기본값으로)" "되돌릴 수 있는 결정이면 기본값으로 정해"
+ask '[{"question": "형식은?", "options": [{"label": "JSON (Recommended)"}, {"label": "YAML (추천)"}]}]'
+not_in_reason "추천 표시가 둘이면 적지 않음" "추천 선택지"
+ask '[{"question": "무엇을 넣을까요?", "multiSelect": true, "options": [{"label": "로그 (Recommended)"}, {"label": "지표"}]}]'
+not_in_reason "여러 개 고르기는 적지 않음" "추천 선택지"
+ask '[{"question": "지울까요?", "options": [{"label": "유지"}, {"label": "삭제 (비추천)"}]}]'
+not_in_reason "(비추천)은 추천이 아님" "추천 선택지"
+ask '[{"question": "저장소는 어느 쪽?", "options": [{"label": "SQLite (Recommended)"}, {"label": "Postgres"}]}, {"question": "이름은?", "options": [{"label": "a"}, {"label": "b"}]}]'
+in_reason "질문이 여럿이면 질문 → 추천" "저장소는 어느 쪽? → SQLite"
+grep -q "(추천: SQLite)" "$A/holds.jsonl" && ok "보류 목록 글에도 (추천: 이름)" || no "보류 목록에 추천 없음" "$(cat "$A/holds.jsonl")"
+ask '[{"question": "키는?", "options": [{"label": "--token REC_MARKER (Recommended)"}, {"label": "없음"}]}]'
+case "$REASON$(cat "$A/holds.jsonl")" in *REC_MARKER*) no "추천 이름 가림 실패" "$REASON" ;; *) ok "추천 이름도 가림 적용" ;; esac
+ask 'null'; [ -n "$REASON" ] && ok "질문 목록이 깨져도 거절" || no "깨진 질문 목록" "$OUT"
+aw off >/dev/null; reset
+
+# ── 잠자기 방지만 (--mode awake, 0.24): 자리 비움이 아니므로 훅·guard는 꺼져 있을 때와 같다 ──
+DEPLOY='npx cdk deploy Demo'
+guard() {  # guard <CLAUDE_PID|-> <세션> <cwd> <명령> [표식 인자...] → OUT (표식 인자가 없으면 0.24 이전 hooks.json으로 뜬 탭)
+  gp=$1; gs=$2; gc=$3; gm=$4; shift 4
+  OUT=$(python3 -c 'import json,sys
+print(json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "session_id": sys.argv[1], "cwd": sys.argv[2], "tool_input": {"command": sys.argv[3]}}))' "$gs" "$gc" "$gm" \
+    | if [ "$gp" = - ]; then python3 "$S/guard.py" "$@"; else CLAUDE_PID=$gp python3 "$S/guard.py" "$@"; fi)
+}
+decision() { python3 -c 'import json,sys
+try: print(json.loads(sys.argv[1])["hookSpecificOutput"].get("permissionDecision", "note"))
+except Exception: print("none" if not sys.argv[1].strip() else "error")' "$OUT"; }
+code "on --mode awake" 0 aw on --for 2h --mode awake --json
+expect "awake: 켜짐, mode awake, 경고 없음, status 키 그대로" "$OUT" "d['active'] is True and d['mode'] == 'awake' and d['tickets'] == [] and d['caffeinate']['alive'] is True and d['warnings'] == [] and set(d) == $KEYS | {'warnings'}"
+[ -e "$A/awake.json" ] && [ ! -e "$A/state.json" ] && ok "awake 상태는 awake.json에만 (state.json 없음)" || no "awake 상태 파일" "$(ls "$A")"
+[ "$(stat -f %Lp "$A/awake.json")" = 600 ] && ok "awake.json 0600" || no "awake.json 권한"
+aw status | grep -q "잠자기 방지 (확인 창·질문은 평소대로): 켜짐" && ok "status 텍스트가 모드를 말함" || no "awake status 텍스트" "$(aw status)"
+hook PreToolUse s1; [ -z "$OUT" ] && ok "awake: 질문 창 그대로" || no "awake인데 질문 거절" "$OUT"
+hook Stop s1 "$ASK"; [ -z "$OUT" ] && ok "awake: Stop 통과" || no "awake인데 Stop을 막음" "$OUT"
+hook UserPromptSubmit s1; [ -z "$OUT" ] && ok "awake: 모드 알림 없음" || no "awake인데 모드 알림" "$OUT"
+hook SessionStart s1; [ -z "$OUT" ] && ok "awake: SessionStart 알림 없음" || no "awake인데 SessionStart 알림" "$OUT"
+[ ! -e "$A/holds.jsonl" ] && [ ! -e "$A/sessions" ] && ok "awake: 보류·세션 기록 없음" || no "awake에서 기록이 생김"
+guard - s1 "$T" "$DEPLOY" --schema 1
+[ "$(decision)" = ask ] && [ ! -e "$A/queue.jsonl" ] && ok "awake: guard는 평소대로 ask, 아침 목록 없음" || no "awake의 guard 판정: $(decision)" "$OUT"
+# 예전 스크립트(0.23)는 awake.json을 읽지 않는다 → 꺼짐으로 본다 (기획 반박 반례 1)
+mkdir "$T/old"
+if git -C "$S" show 625c812:scripts/away.py > "$T/old/away.py" 2>/dev/null && git -C "$S" show 625c812:scripts/kitlib.py > "$T/old/kitlib.py" 2>/dev/null \
+    && git -C "$S" show 625c812:scripts/guard.py > "$T/old/guard.py" 2>/dev/null && git -C "$S" show 625c812:scripts/deploy_gate.py > "$T/old/deploy_gate.py" 2>/dev/null; then
+  expect "0.23 away.py status: awake를 꺼짐으로" "$(python3 "$T/old/away.py" status --json)" 'd["active"] is False and "mode" not in d'
+  OUT=$(python3 -c 'import json,sys;print(json.dumps({"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","session_id":"o1","cwd":sys.argv[1],"tool_input":{"questions":[{"question":"어느 쪽?","options":[]}]}}))' "$T" | python3 "$T/old/away.py" hook)
+  [ -z "$OUT" ] && ok "0.23 질문 훅: awake에서 거절하지 않음" || no "0.23 질문 훅이 awake를 자리 비움으로 읽음" "$OUT"
+  OUT=$(python3 -c 'import json,sys;print(json.dumps({"session_id":"o1","cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$T" "$DEPLOY" | python3 "$T/old/guard.py")
+  [ "$(decision)" = ask ] && ok "0.23 guard: awake에서 ask (거절 아님)" || no "0.23 guard 판정: $(decision)" "$OUT"
+else
+  echo "(git 기록에 625c812가 없어 0.23 스크립트 시험은 건너뜀)"
+fi
+aw on --for 1h --mode awake | grep -q "자리 비움이 아닙니다" && ok "켤 때 '자리 비움이 아닙니다' 안내" || no "awake 켜기 안내"
+[ "$(alive)" = 1 ] && ok "awake를 다시 켜면 caffeinate는 하나" || no "awake 교체 뒤 caffeinate 수: $(alive)"
+code "awake → away 전환" 0 aw on --for 1h --json
+expect "전환 뒤 mode away" "$OUT" 'd["active"] is True and d["mode"] == "away"'
+[ -e "$A/state.json" ] && [ ! -e "$A/awake.json" ] && [ "$(alive)" = 1 ] && ok "전환: state.json만 남고 caffeinate 하나" || no "awake → away 뒤 상태 (alive=$(alive))" "$(ls "$A")"
+hook PreToolUse s1
+expect "away로 바꾸면 질문 창 거절" "$OUT" 'd["hookSpecificOutput"]["permissionDecision"] == "deny"'
+code "away → awake 전환" 0 aw on --for 1h --mode awake --json
+expect "전환 뒤 mode awake" "$OUT" 'd["mode"] == "awake"'
+[ -e "$A/awake.json" ] && [ ! -e "$A/state.json" ] && [ "$(alive)" = 1 ] && ok "전환: awake.json만 남고 caffeinate 하나 (티켓도 사라짐)" || no "away → awake 뒤 상태 (alive=$(alive))" "$(ls "$A")"
+hook PreToolUse s1; [ -z "$OUT" ] && ok "awake로 바꾸면 질문 창 그대로" || no "전환 뒤에도 질문 거절" "$OUT"
+code "awake에서 off" 0 aw off --json
+expect "off JSON (awake)" "$OUT" 'd == {"ok": True, "was_active": True, "mode": "awake", "caffeinate_released": True, "queue_count": 0}'
+[ "$(alive)" = 0 ] && [ ! -e "$A/awake.json" ] && ok "off 뒤 caffeinate 종료·awake.json 삭제" || no "awake off 뒤 정리 (alive=$(alive))"
+aw on --for 1h --mode awake >/dev/null; aw off | grep -q "잠자기 방지 끔" && ok "off 텍스트 (잠자기 방지 끔)" || no "awake off 텍스트"
+reset
+code "awake + 티켓 인자" 2 aw on --for 1h --mode awake --ticket "$T::Demo" --json
+expect "bad_ticket" "$OUT" 'd["ok"] is False and d["error"] == "bad_ticket"'
+code "모르는 모드" 2 aw on --for 1h --mode nap --json
+expect "usage" "$OUT" 'd["error"] == "usage"'
+[ ! -e "$A/awake.json" ] && [ ! -e "$A/state.json" ] && [ "$(alive)" = 0 ] && ok "인자 오류에서는 상태·caffeinate 없음" || no "인자 오류 뒤 상태가 남음"
+echo battery > "$FAKE/batt"
+code "awake는 배터리에서도 켜짐" 0 aw on --for 1h --mode awake --json
+expect "배터리 주의 + power 점검 false" "$OUT" 'd["active"] and d["mode"] == "awake" and any("배터리" in w and "키 입력이 없을 때의 잠자기만" in w for w in d["warnings"]) and [c["ok"] for c in d["checks"] if c["name"] == "power"] == [False]'
+code "그 상태에서 away로 바꾸려 하면 거부" 3 aw on --for 1h --json
+expect "on_battery, awake는 그대로" "$(aw status --json)" 'd["active"] is True and d["mode"] == "awake"'
+aw off >/dev/null
+echo unknown > "$FAKE/batt"
+code "awake도 전원 미확인이면 거부" 3 aw on --for 1h --mode awake --json
+expect "power_unknown" "$OUT" 'd["error"] == "power_unknown"'
+echo battery > "$FAKE/batt"; echo closed > "$FAKE/lid"
+code "awake도 뚜껑 닫힘이면 거부" 3 aw on --for 1h --mode awake --json
+expect "lid_closed" "$OUT" 'd["error"] == "lid_closed"'
+reset
+# 두 파일이 같이 있으면(예전 앱이 awake를 모르고 자리 비움을 켬) 자리 비움이 우선, off는 둘 다 끈다
+aw on --for 1h --mode awake >/dev/null; cp "$A/awake.json" "$T/awake.keep"; aw on --for 2h >/dev/null; cp "$T/awake.keep" "$A/awake.json"
+expect "둘 다 있으면 away" "$(aw status --json)" 'd["mode"] == "away" and 7100 < d["remaining_seconds"] <= 7200'
+code "둘 다 있을 때 off" 0 aw off --json
+expect "off: away로 보고" "$OUT" 'd["was_active"] is True and d["mode"] == "away"'
+[ ! -e "$A/awake.json" ] && [ ! -e "$A/state.json" ] && ok "off가 두 파일을 다 지움" || no "off 뒤 파일이 남음" "$(ls "$A")"
+mkdir -p "$A"
+python3 -c 'import json,sys,time
+t = time.time(); json.dump({"version": 1, "started": t - 7200, "until": t - 3600, "caffeinate": None, "checks": []}, open(sys.argv[1], "w"))' "$A/awake.json"
+expect "만료된 awake: 꺼짐·expired" "$(aw status --json)" 'd["active"] is False and d["expired"] is True and d["mode"] is None'
+aw off >/dev/null; [ ! -e "$A/awake.json" ] && ok "만료된 awake.json 정리" || no "만료된 awake.json이 남음"
+reset
+
+# ── 0.24 이전에 뜬 탭: 표식 없이 불린 guard가 남긴 기록 (stale/) ──
+mkdir -p "$T/repo/.git" "$T/repo/sub"
+sleep 300 & OLD=$!
+guard "$OLD" o1 "$T/repo/sub" 'git status' --schema 1
+[ "$(decision)" = none ] && [ ! -e "$A/stale" ] && ok "표식이 있는 호출은 기록하지 않음" || no "표식 있는 호출이 기록함" "$OUT"
+guard "$OLD" o1 "$T/repo/sub" 'git status'
+[ "$(decision)" = none ] && [ -f "$A/stale/pid-$OLD.json" ] && ok "표식 없는 호출: 꺼져 있으면 출력 없이 기록만" || no "표식 없는 호출 기록" "$OUT $(ls "$A/stale" 2>&1)"
+[ "$(stat -f %Lp "$A/stale")" = 700 ] && [ "$(stat -f %Lp "$A/stale/pid-$OLD.json")" = 600 ] && ok "기록 0600, 폴더 0700" || no "stale 권한"
+code "기록이 있는 status" 0 aw status --json
+expect "stale_sessions: 살아 있는 프로세스 (basis pid, 작업 폴더)" "$OUT" 'len(d["stale_sessions"]) == 1 and d["stale_sessions"][0]["session"] == "o1" and d["stale_sessions"][0]["repo"].endswith("/repo") and d["stale_sessions"][0]["cwd"].endswith("/repo/sub") and d["stale_sessions"][0]["basis"] == "pid" and set(d["stale_sessions"][0]) == {"session","repo","cwd","seen_at","basis"} and d["sessions"] == []'
+aw status | grep -q "재시작 권장: repo (kit 업데이트 전에 시작한 탭" && ok "status 텍스트에 재시작 권장" || no "status 텍스트" "$(aw status)"
+code "awake로 켜면 예전 탭 경고 없음" 0 aw on --for 1h --mode awake --json
+expect "경고 없음 (목록은 그대로)" "$OUT" 'd["warnings"] == [] and len(d["stale_sessions"]) == 1'
+guard "$OLD" o1 "$T/repo/sub" 'git status'; [ "$(decision)" = none ] && ok "awake: 예전 탭에도 안내를 넣지 않음" || no "awake인데 예전 탭 안내" "$OUT"
+code "away로 켜면 예전 탭 경고" 0 aw on --for 1h --json
+expect "경고에 탭 수·레포·재시작" "$OUT" 'any("Claude 탭 1개 (repo)" in w and "재시작" in w for w in d["warnings"])'
+guard "$OLD" o1 "$T/repo/sub" 'git status'
+expect "away: 무해한 명령에는 판정 없이 안내만" "$OUT" '"permissionDecision" not in d["hookSpecificOutput"] and "자리 비움 모드" in d["hookSpecificOutput"]["additionalContext"] and "kit 업데이트 전에 시작" in d["hookSpecificOutput"]["additionalContext"] and "질문 창(AskUserQuestion)을 쓰지 말고" in d["hookSpecificOutput"]["additionalContext"]'
+guard "$OLD" o1 "$T/repo/sub" 'git status'; [ "$(decision)" = none ] && ok "같은 회차의 두 번째는 안내 없음" || no "안내가 반복됨" "$OUT"
+guard "$OLD" o1 "$T/repo/sub" "$DEPLOY"
+expect "같은 회차: 위험 명령은 거절만 (안내 없음)" "$OUT" 'd["hookSpecificOutput"]["permissionDecision"] == "deny" and "kit 업데이트 전" not in d["hookSpecificOutput"]["permissionDecisionReason"]'
+aw on --for 1h >/dev/null
+guard "$OLD" o1 "$T/repo/sub" "$DEPLOY"
+expect "새 회차: 위험 명령이면 거절 이유 뒤에 안내" "$OUT" 'd["hookSpecificOutput"]["permissionDecision"] == "deny" and "아침 목록에 넣었습니다" in d["hookSpecificOutput"]["permissionDecisionReason"] and "kit 업데이트 전에 시작" in d["hookSpecificOutput"]["permissionDecisionReason"] and "additionalContext" not in d["hookSpecificOutput"]'
+guard "$OLD" o2 "$T/repo/sub" "$DEPLOY" --schema 1
+expect "표식이 있는 탭의 거절에는 안내가 없음" "$OUT" 'd["hookSpecificOutput"]["permissionDecision"] == "deny" and "kit 업데이트 전" not in d["hookSpecificOutput"]["permissionDecisionReason"]'
+python3 -c 'import json,sys
+p = sys.argv[1]; d = json.load(open(p)); d["noted_ts"] -= 1801; json.dump(d, open(p, "w"))' "$A/stale/pid-$OLD.json"
+guard "$OLD" o1 "$T/repo/sub" 'ls'; [ "$(decision)" = note ] && ok "30분이 지나면 안내를 다시" || no "30분 뒤 안내 없음" "$OUT"
+aw off >/dev/null
+kill "$OLD" 2>/dev/null; wait "$OLD" 2>/dev/null
+expect "탭을 닫으면(프로세스 종료) 목록에서 빠짐" "$(aw status --json)" 'd["stale_sessions"] == []'
+[ ! -e "$A/stale/pid-$OLD.json" ] && ok "끝난 프로세스의 기록 삭제" || no "끝난 프로세스의 기록이 남음"
+# pid 재사용: 기록보다 나중에 시작한 프로세스는 그 탭이 아니다
+sleep 300 & OLD=$!
+guard "$OLD" o3 "$T/repo" 'ls'
+python3 -c 'import json,sys
+p = sys.argv[1]; d = json.load(open(p)); d["seen_ts"] -= 3600; json.dump(d, open(p, "w"))' "$A/stale/pid-$OLD.json"
+expect "본 시각보다 나중에 시작한 pid는 다른 프로세스" "$(aw status --json)" 'd["stale_sessions"] == []'
+kill "$OLD" 2>/dev/null; wait "$OLD" 2>/dev/null
+# pid를 모르면(환경 변수 없음) 세션 ID로 적고 2시간 안의 것만 추정으로
+guard - o4 "$T/repo" 'ls'
+[ -f "$A/stale/sid-o4.json" ] && ok "CLAUDE_PID가 없으면 세션 ID로 기록" || no "세션 기록 없음" "$(ls "$A/stale" 2>&1)"
+expect "basis time (추정)" "$(aw status --json)" '[(x["session"], x["basis"]) for x in d["stale_sessions"]] == [("o4", "time")]'
+aw status | grep -q "떠 있는지는 추정" && ok "status 텍스트에 추정 표시" || no "추정 표시" "$(aw status)"
+python3 -c 'import json,sys
+p = sys.argv[1]; d = json.load(open(p)); d["seen_ts"] -= 7300; json.dump(d, open(p, "w"))' "$A/stale/sid-o4.json"
+expect "2시간이 지난 추정 기록은 보이지 않음" "$(aw status --json)" 'd["stale_sessions"] == []'
+# 기록을 쓸 수 없어도 guard 판정은 그대로
+rm -rf "$A/stale"; : > "$A/stale"
+guard - o5 "$T/repo" "$DEPLOY"; [ "$(decision)" = ask ] && ok "기록 폴더를 못 써도 ask" || no "기록 실패가 판정을 바꿈: $(decision)" "$OUT"
+guard - o5 "$T/repo" 'ls'; [ "$(decision)" = none ] && ok "기록 폴더를 못 써도 무해한 명령은 출력 없음" || no "기록 실패 뒤 출력" "$OUT"
+expect "깨진 기록 폴더에서도 status" "$(aw status --json)" 'd["ok"] is True and d["stale_sessions"] == []'
+rm -f "$A/stale"; mkdir -p "$A/stale"; echo 'not json' > "$A/stale/pid-1.json"; echo '{"pid": true, "seen_ts": "x"}' > "$A/stale/sid-x.json"
+expect "깨진 기록 파일은 건너뜀" "$(aw status --json)" 'd["stale_sessions"] == []'
 exit $fail

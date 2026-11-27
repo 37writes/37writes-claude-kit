@@ -87,7 +87,8 @@ tier: T1
 - 워커가 확인 중 HOME 격리를 빠뜨려 실제 아침 목록에 `command:"fixture"` 한 줄을 넣었다 (상태 폴더는 에이전트가 고치지 않으므로 사용자에게 알림). 작업 지시의 "HOME을 격리한다"가 한 줄이라 약했다 → 검증 지시에는 격리 방법을 명령으로 적는다.
 
 ## 작업 단계
-- [ ] S1. away.py·guard.py·hooks.json: 모드(별도 상태 파일), 예전 탭 기록·안내, 추천 선택지, 알림 문장 + 테스트 — Coder(지휘 세션) — `sh scripts/test_away.sh`·`test_guard.sh`·`test_away_deploy.sh`·`test_deploy_gate.sh` 통과, 새 케이스 포함 (0.23 `away.py`가 awake를 꺼짐으로 읽는 것 포함)
+- [x] S1. away.py·guard.py·hooks.json: 모드(별도 상태 파일), 예전 탭 기록·안내, 추천 선택지, 알림 문장 + 테스트 — Coder(지휘 세션) — `sh scripts/test_away.sh`·`test_guard.sh`·`test_away_deploy.sh`·`test_deploy_gate.sh` 통과, 새 케이스 포함 (0.23 `away.py`가 awake를 꺼짐으로 읽는 것 포함)
+  - 결과: test_away 217, test_guard 175, test_away_deploy 102, test_deploy_gate 56 통과 (plans 32, profile_check 19도 그대로). 0.23 스크립트(`git show 625c812:`)의 status·질문 훅·guard가 awake를 꺼짐으로 읽는 것을 테스트에 넣었다. `ps -o pid=,etime= -p` 실측: 없는 pid만 주면 끝 코드 1에 출력 없음, 일부만 있으면 0, 범위 밖 pid는 오류 글 + 1(→ "모름"으로 처리해 추정 표시). 기존 `test_guard.sh`는 guard를 표식 없이 불러서 그대로 두면 모든 케이스가 예전 탭으로 읽혔다 → 기본 호출에 표식을 붙이고 표식 없는 케이스를 따로 뒀다. 구현 중 파일 내용을 Bash heredoc으로 쓰다가 글 속의 `away.py`와 티켓 인자 때문에 guard가 두 번 거절했다 (실행이 아닌 글자 오탐, guard 완화 기획의 입력).
 - [ ] S2. harness·README·CLAUDE.md·버전 0.24.0 — Coder — `claude plugin validate .`, harness 170줄 이하
 - [ ] S3. AwayBar 앱: 모드 선택, 재시작 권장 표시 — Coder — `(cd macos && swift test)` 통과, `--snapshot`으로 두 모드 화면 확인
 - [ ] S4. 독립 검증 — Validator(Codex gpt-6.2-astra) — 테스트 재실행, 변경 범위, 직접 고른 실패 시나리오 1~3개, 워커 권한 창 → `deny --reason` 실제 확인(안 되면 미검증으로)

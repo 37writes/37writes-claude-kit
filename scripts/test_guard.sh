@@ -5,24 +5,27 @@ cd "$(dirname "$0")" || exit 1
 S=$(pwd)
 T=$(cd "$(mktemp -d)" && pwd -P); trap 'rm -rf "$T"' EXIT
 export HOME="$T/home" GIT_CONFIG_NOSYSTEM=1
+unset CLAUDE_PID  # Claude 세션 안에서 돌려도 결과가 같게 (표식 없는 호출의 기록 키)
 mkdir -p "$HOME"
 fail=0
-verdict() {  # verdict <끝 코드> <guard 출력> → none|ask|deny|allow|error
+verdict() {  # verdict <끝 코드> <guard 출력> → none|ask|deny|allow|note(판정 없이 안내만)|error
   python3 -c 'import json,sys
 code, out = sys.argv[1], sys.argv[2].strip()
 if code != "0": print("error"); raise SystemExit
 if not out: print("none"); raise SystemExit
 try:
-    d = json.loads(out)["hookSpecificOutput"]["permissionDecision"]
+    h = json.loads(out)["hookSpecificOutput"]
+    d = h["permissionDecision"] if "permissionDecision" in h else ("note" if h.get("additionalContext") else "error")
 except Exception:
     d = "error"
-print(d if d in ("ask", "deny", "allow") else "error")' "$1" "$2"
+print(d if d in ("ask", "deny", "allow", "note") else "error")' "$1" "$2"
 }
+MARK="--schema 1"  # hooks.json의 guard 등록 명령에 붙는 표식. 비우면 0.24 이전 hooks.json으로 뜬 탭의 호출
 run() {  # run <cwd|-> <명령> → OUT, GOT
   OUT=$(python3 -c 'import json,sys
 d = {"tool_input": {"command": sys.argv[2]}, "session_id": "test"}
 if sys.argv[1] != "-": d["cwd"] = sys.argv[1]
-print(json.dumps(d))' "$1" "$2" | python3 "$S/guard.py" 2>/dev/null)
+print(json.dumps(d))' "$1" "$2" | python3 "$S/guard.py" $MARK 2>/dev/null)
   GOT=$(verdict $? "$OUT")
 }
 check() {  # check none|ask|deny <명령>
@@ -33,7 +36,10 @@ check() {  # check none|ask|deny <명령>
 [ "$(verdict 0 '')" = none ] && [ "$(verdict 0 'Traceback (most recent call last)')" = error ] \
   && [ "$(verdict 1 '')" = error ] && [ "$(verdict 0 '{"hookSpecificOutput":{"permissionDecision":"allow"}}')" = allow ] \
   && [ "$(verdict 0 '{"hookSpecificOutput":{"permissionDecision":"deny"}}')" = deny ] \
-  && echo "ok   판정 도우미 (none·error·allow·deny 구분)" || { echo "FAIL 판정 도우미"; fail=1; }
+  && [ "$(verdict 0 '{"hookSpecificOutput":{"additionalContext":"x"}}')" = note ] && [ "$(verdict 0 '{"hookSpecificOutput":{}}')" = error ] \
+  && echo "ok   판정 도우미 (none·error·allow·deny·note 구분)" || { echo "FAIL 판정 도우미"; fail=1; }
+grep -q 'scripts/guard.py\\" --schema 1"' "$S/../hooks/hooks.json" && echo "ok   hooks.json의 guard 등록에 표식(--schema 1)" || { echo "FAIL hooks.json guard 표식 없음"; fail=1; }
+[ "$(grep -c -- '--schema' "$S/../hooks/hooks.json")" = 1 ] && echo "ok   표식은 guard 등록 한 곳에만 (away.py 훅 명령은 그대로)" || { echo "FAIL --schema가 다른 훅 명령에도 있음"; fail=1; }
 check none 'grep "ampx sandbox" file'
 check none 'cat deploy.sh'
 check none 'deploy.sh --diff'
@@ -248,7 +254,7 @@ mkdir "$T/slow"; cp "$S/guard.py" "$S/kitlib.py" "$S/away.py" "$T/slow/"
 [ -f "$S/deploy_gate.py" ] && cp "$S/deploy_gate.py" "$T/slow/"
 printf '\ndef queue_add(*a, **k):\n    time.sleep(60)\n' >> "$T/slow/away.py"
 START=$(date +%s)
-OUT=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$T/free" "$INCIDENT" | python3 "$T/slow/guard.py")
+OUT=$(python3 -c 'import json,sys;print(json.dumps({"cwd":sys.argv[1],"tool_input":{"command":sys.argv[2]}}))' "$T/free" "$INCIDENT" | python3 "$T/slow/guard.py" $MARK)
 END=$(date +%s)
 has "기록이 멈춰도 deny + 기록 실패" "$OUT" '"\"deny\"" in s.replace(" ", "") and "기록에 실패" in s'
 [ $((END - START)) -lt 10 ] && echo "ok   기록이 멈춰도 10초 안에 거절 (훅 제한 15초)" || { echo "FAIL 멈춘 기록에서 응답이 늦음: $((END - START))초"; fail=1; }
@@ -257,4 +263,23 @@ chmod 000 "$A"; checkin "$T/free" ask "$INCIDENT"; chmod 700 "$A"
 away_state none
 checkin "$T/free" ask 'rm ~/.config/37writes-kit/away/state.json'
 checkin "$T/free" none 'git status'
+[ ! -e "$A/stale" ] && echo "ok   표식이 있는 호출은 탭 기록(stale/)을 남기지 않음" || { echo "FAIL 표식 있는 호출이 stale/에 기록"; fail=1; }
+# 잠자기 방지만 켠 상태(awake.json)는 자리 비움이 아니다: 평소대로 ask, 아침 목록 없음
+mkdir -p "$A"; python3 -c 'import json,sys,time
+t = time.time(); json.dump({"version": 1, "started": t - 60, "until": t + 3600}, open(sys.argv[1], "w"))' "$A/awake.json"
+checkin "$T/free" ask "$INCIDENT"
+checkin "$T/free" ask 'git push --force origin main'
+[ ! -e "$A/queue.jsonl" ] && echo "ok   awake에서는 아침 목록을 쓰지 않음" || { echo "FAIL awake에서 목록 기록"; fail=1; }
+# 0.24 이전 hooks.json으로 뜬 탭(표식 없음): 판정은 같고, 자리 비움 중이면 안내를 덧붙인다 (기록·목록은 test_away.sh)
+MARK=
+away_state none;   checkin "$T/free" none 'git status'
+[ -f "$A/stale/sid-test.json" ] && echo "ok   표식 없는 호출은 탭을 기록 (꺼져 있으면 출력 없음)" || { echo "FAIL 표식 없는 호출 기록 없음"; fail=1; }
+checkin "$T/free" ask "$INCIDENT"
+away_state 3600;   checkin "$T/free" deny "$INCIDENT"
+has "표식 없는 탭의 거절 이유: 원래 이유 + 예전 탭 안내" "$OUT" '"아침 목록에 넣었습니다" in s and "kit 업데이트 전에 시작" in s and "additionalContext" not in s'
+checkin "$T/free" none 'git status'
+away_state 3600;   checkin "$T/free" note 'git status'
+has "무해한 명령: 판정 없이 안내만" "$OUT" '"permissionDecision" not in s and "질문 창(AskUserQuestion)을 쓰지 말고" in s'
+checkin "$T/free" deny "$INCIDENT"
+has "같은 회차의 다음 거절에는 안내를 다시 붙이지 않음" "$OUT" '"kit 업데이트 전" not in s'
 exit $fail

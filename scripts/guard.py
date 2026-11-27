@@ -3,6 +3,7 @@
 import os
 import re
 import shlex
+import sys
 
 import deploy_gate
 import kitlib
@@ -588,12 +589,38 @@ def all_reasons(command, cwd):
     return list(dict.fromkeys(reasons))
 
 
+SCHEMA = 1  # hooks.json의 guard 등록 명령에 붙는 표식 (`guard.py --schema 1`)
+
+
+def schema_arg(argv):
+    """`--schema N`의 N. 없거나 숫자가 아니면 0 (0.24 이전 hooks.json으로 뜬 Claude 프로세스가 부른 것)."""
+    for i, arg in enumerate(argv[:-1]):
+        if arg == "--schema" and argv[i + 1].isdigit():
+            return int(argv[i + 1])
+    return 0
+
+
+def old_tab_note(data):
+    """표식 없이 불렸으면 그 탭을 적고, 자리 비움 중이면 그 탭에 넣을 안내문 (away.observe_old). 그 밖에는 None.
+    표식이 있는 호출은 아무것도 하지 않는다 (판정 경로에 일을 더하지 않게). 오류는 무시한다."""
+    if schema_arg(sys.argv[1:]) >= SCHEMA:
+        return None
+    try:
+        import away
+        return away.observe_old(data)
+    except Exception:
+        return None
+
+
 def main():
     data = kitlib.read_input()
     command = (data.get("tool_input") or {}).get("command", "")
     reasons = all_reasons(command, data.get("cwd") or os.getcwd())
+    note = old_tab_note(data)
     if reasons:
         decision, text = decide(reasons, data, command)
+        if note and decision == "deny":
+            text += "\n" + note  # 거절 이유 원문은 모델에 돌아간다 (판정 + additionalContext 조합은 확인하지 않았다)
         kitlib.emit({
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
@@ -601,6 +628,8 @@ def main():
                 "permissionDecisionReason": text,
             }
         })
+    elif note:
+        kitlib.emit({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}})
 
 
 if __name__ == "__main__":

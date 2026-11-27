@@ -1,7 +1,8 @@
 """자리 비움(연속 작업) 모드: 사용자가 없는 동안 guard의 확인 창(ask)을 거절(deny) + 아침 목록으로 바꾼다.
 
 사용자가 `!`나 메뉴 막대 앱으로 켠다:
-    away.py on --until HH:MM | --for 3h [--json]
+    away.py on --until HH:MM | --for 3h [--mode away|awake] [--json]
+        awake = 잠자기 방지만 (확인 창·질문은 평소대로). 상태를 awake.json에 따로 둔다.
     away.py off [--json]
     away.py status [--json]
     away.py on ... --ticket '<레포 경로>::<스택>[::횟수]'   (배포 티켓. 사용자만. 실행은 away_deploy.py)
@@ -10,7 +11,7 @@
     away.py hook            (SessionStart·UserPromptSubmit·PreToolUse(AskUserQuestion)·Stop 훅, stdin = 훅 입력)
 켜져 있는 동안: 질문 창은 거절 + 보류 목록, 글로 묻고 끝낸 턴은 조건이 맞으면 최대 2번 이어 가게 한다.
 끝 코드: 0 성공, 1 예상 밖 오류, 2 인자 오류, 3 시작 점검 거부, 4 절전 방지 시작 실패.
-guard.py가 active()·queue_add()를 import해서 쓴다. 같은 계정(HOME)의 모든 레포·세션이 상태 하나를 본다.
+guard.py가 active()·queue_add()·observe_old()를 import해서 쓴다. 같은 계정(HOME)의 모든 레포·세션이 상태 하나를 본다.
 """
 import argparse
 import datetime
@@ -28,6 +29,8 @@ import kitlib
 
 DIR = os.path.join(kitlib.CONFIG_DIR, "away")
 STATE = os.path.join(DIR, "state.json")
+AWAKE = os.path.join(DIR, "awake.json")   # 잠자기 방지만 켠 상태. 예전 스크립트는 이 파일을 읽지 않아 "꺼짐"으로 본다
+STALE = os.path.join(DIR, "stale")        # 표식 없이 불린 guard(예전 hooks.json으로 뜬 Claude 프로세스) 기록
 QUEUE = os.path.join(DIR, "queue.jsonl")
 LOCK = os.path.join(DIR, "state.lock")
 HOLDS = os.path.join(DIR, "holds.jsonl")
@@ -40,9 +43,13 @@ STACK_NAME = re.compile(r"[A-Za-z][A-Za-z0-9-]{0,127}")
 MAX_BLOCKS = 2        # 한 회차(사용자 입력 사이)에 턴 종료를 이어 가게 하는 횟수
 PROGRESS_TOOLS = 3    # 두 번째 재개 전에 필요한 도구 호출 수 (헛도는 재개 방지)
 SESSION_KEEP = 2 * 86400
+STALE_SEEN_EVERY = 300    # 예전 탭 기록을 다시 쓰는 간격
+STALE_NOTE_EVERY = 1800   # 예전 탭에 안내를 다시 넣는 간격
+STALE_GUESS = 2 * 3600    # pid로 확인하지 못할 때 "아직 떠 있다"고 보는 시간
 MAX_SECONDS = 12 * 3600
 DISK_WARN_BYTES = 5 * 1024 ** 3
 LID_NOTE = "뚜껑을 닫으면 잠듭니다 (전원 연결·뚜껑 열림 동안만 절전을 막습니다)"
+BATTERY_NOTE = "배터리 상태입니다. 키 입력이 없을 때의 잠자기만 막고, 뚜껑을 닫거나 배터리가 떨어지면 잠듭니다"
 
 
 class Fail(Exception):
@@ -53,10 +60,10 @@ class Fail(Exception):
 
 # ── 상태 ─────────────────────────────────────────────────────────────
 
-def load_state():
-    """상태 파일 내용. 없거나 깨졌거나 형식이 다르면 None."""
+def load_state(path=None):
+    """상태 파일 내용 (기본 state.json = 자리 비움, AWAKE = 잠자기 방지만). 없거나 깨졌거나 형식이 다르면 None."""
     try:
-        with open(STATE, encoding="utf-8") as f:
+        with open(path or STATE, encoding="utf-8") as f:
             st = json.load(f)
     except (OSError, ValueError):
         return None
@@ -78,6 +85,13 @@ def active(now=None):
     return st if st and now < st["until"] else None
 
 
+def awake(now=None):
+    """유효한 잠자기 방지 상태 (자리 비움 아님: 확인 창·질문은 평소대로), 아니면 None."""
+    st = load_state(AWAKE)
+    now = time.time() if now is None else now
+    return st if st and now < st["until"] else None
+
+
 def hhmm(epoch):
     return datetime.datetime.fromtimestamp(epoch).strftime("%H:%M")
 
@@ -90,20 +104,21 @@ def ensure_dir():
     os.makedirs(DIR, mode=0o700, exist_ok=True)
 
 
-def save_state(st):
+def save_state(st, path=None):
     ensure_dir()
-    tmp = STATE + ".tmp"
+    path = path or STATE
+    tmp = path + ".tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(st, f, ensure_ascii=False)
     os.chmod(tmp, 0o600)
-    os.replace(tmp, STATE)
+    os.replace(tmp, path)
 
 
-def remove_state():
+def remove_state(path=None):
     """상태 파일을 지운다. 지우지 못해 파일이 남으면 Fail (off가 성공으로 보이지 않게)."""
     try:
-        os.remove(STATE)
+        os.remove(path or STATE)
     except FileNotFoundError:
         pass
     except OSError as e:
@@ -521,6 +536,150 @@ def prune_sessions(now):
         pass
 
 
+# ── 0.24 이전에 뜬 탭 (guard 표식 없음) ──────────────────────────────
+
+def stale_path(key):
+    name = re.sub(r"[^\w.-]", "_", str(key or ""))[:80].strip(".")
+    return os.path.join(STALE, name + ".json") if name else None
+
+
+def load_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            rec = json.load(f)
+        return rec if isinstance(rec, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def num(value, default=0):
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else default
+
+
+def stale_note(st):
+    return (f"[37writes-kit] {hhmm(st['until'])}까지 자리 비움 모드입니다 (사용자가 자리에 없습니다). "
+            "이 탭은 kit 업데이트 전에 시작해 질문 보류·이어 가기 훅이 없을 수 있습니다. 질문 창(AskUserQuestion)을 쓰지 말고, "
+            "글로 묻고 턴을 끝내지 마세요. 되돌릴 수 있는 결정은 기본값으로 정해 기록하고, 확인이 필요한 일은 건너뛴 뒤 "
+            "남은 다른 일을 하고 최종 보고의 `보류:`에 모읍니다. 거절된 명령은 바꾸거나 감싸서 다시 시도하지 않습니다.")
+
+
+def observe_old(data, now=None):
+    """표식 없이 불린 guard: 그 Claude 프로세스를 적고, 자리 비움 중이면 그 탭에 넣을 안내문을 돌려준다 (없으면 None).
+    훅 등록은 프로세스 시작 때 고정되므로 키는 프로세스(CLAUDE_PID), 없으면 세션 ID. 외부 명령을 부르지 않는다."""
+    now = time.time() if now is None else now
+    pid = os.environ.get("CLAUDE_PID") or ""
+    pid = int(pid) if pid.isdigit() and int(pid) > 1 else None
+    sid = str(data.get("session_id") or "")
+    path = stale_path(f"pid-{pid}" if pid else (f"sid-{sid}" if sid else ""))
+    if not path:
+        return None
+    rec = load_json(path)
+    st = active(now)
+    note = None
+    if st and (rec.get("noted_id") != st.get("id") or now - num(rec.get("noted_ts")) > STALE_NOTE_EVERY):
+        note = stale_note(st)
+        rec.update(noted_id=st.get("id"), noted_ts=int(now))
+    cwd = str(data.get("cwd") or rec.get("cwd") or "")
+    if note or now - num(rec.get("seen_ts")) > STALE_SEEN_EVERY or rec.get("session") != sid or rec.get("cwd") != cwd:
+        rec.update(pid=pid, session=sid, cwd=cwd, seen_ts=int(now))
+        try:
+            ensure_dir()
+            os.makedirs(STALE, mode=0o700, exist_ok=True)
+            tmp = f"{path}.{os.getpid()}.tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(rec, f, ensure_ascii=False)
+            os.replace(tmp, path)
+        except OSError:
+            pass
+    return note
+
+
+def work_root(cwd):
+    """cwd에서 위로 올라가며 찾은 git 작업 폴더 (worktree면 그 worktree). 없으면 cwd. git을 부르지 않는다."""
+    path = cwd
+    while path and os.path.dirname(path) != path:
+        if os.path.exists(os.path.join(path, ".git")):
+            return path
+        path = os.path.dirname(path)
+    return cwd
+
+
+def elapsed_of(pids):
+    """{pid: 시작 뒤 지난 초}. ps를 못 쓰면 None (살아 있는지 모름), 하나도 없으면 {}."""
+    try:
+        r = subprocess.run(["ps", "-o", "pid=,etime=", "-p", ",".join(str(p) for p in pids)], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=3)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0 and (r.stdout.strip() or r.stderr.strip()):
+        return None
+    found = {}
+    for line in r.stdout.splitlines():
+        m = re.fullmatch(r"\s*(\d+)\s+(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)\s*", line)
+        if m:
+            days, hours, minutes, seconds = (int(x or 0) for x in m.groups()[1:])
+            found[int(m.group(1))] = days * 86400 + hours * 3600 + minutes * 60 + seconds
+    return found
+
+
+def stale_items(now=None):
+    """0.24 이전에 떠서 Bash를 부른 Claude 탭 중 아직 떠 있는 것: {session, repo, cwd, seen_at, basis(pid|time)}.
+    pid가 있고 본 시각보다 먼저 시작했으면 살아 있다(basis pid). 끝난 프로세스의 기록은 지운다.
+    pid가 없거나 ps를 못 쓰면 마지막 관측이 2시간 안인 것만 추정(basis time)으로. 여기에 없다고 예전 탭이 없다는 뜻은 아니다."""
+    now = time.time() if now is None else now
+    recs = []
+    try:
+        names = [n for n in os.listdir(STALE) if n.endswith(".json")]
+    except OSError:
+        return []
+    for name in names:
+        path = os.path.join(STALE, name)
+        rec = load_json(path)
+        seen = num(rec.get("seen_ts"), None)
+        if seen is None or now - seen > SESSION_KEEP:
+            continue
+        recs.append((path, rec, seen))
+    pids = sorted({rec["pid"] for _, rec, _ in recs if isinstance(rec.get("pid"), int) and not isinstance(rec.get("pid"), bool)})
+    elapsed = elapsed_of(pids) if pids else {}
+    items = []
+    for path, rec, seen in recs:
+        pid = rec.get("pid") if isinstance(rec.get("pid"), int) and not isinstance(rec.get("pid"), bool) else None
+        if pid and elapsed is not None:
+            # 그 pid가 없거나 본 시각 뒤에 시작했으면(pid 재사용) 기록한 프로세스는 끝났다
+            if pid not in elapsed or now - elapsed[pid] > seen + 5:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+                continue
+            basis = "pid"
+        elif now - seen <= STALE_GUESS:
+            basis = "time"
+        else:
+            continue
+        cwd = str(rec.get("cwd") or "")
+        items.append({"session": str(rec.get("session") or ""), "repo": work_root(cwd), "cwd": cwd, "seen_at": iso(seen), "basis": basis})
+    items.sort(key=lambda it: it["seen_at"], reverse=True)
+    return items[:20]
+
+
+def stale_warning(items):
+    names = ", ".join(dict.fromkeys(os.path.basename(it["repo"]) or it["cwd"] for it in items[:5]))
+    return (f"kit 업데이트 전에 시작한 Claude 탭 {len(items)}개 ({names}): 재시작해야 질문 보류·이어 가기가 적용됩니다 "
+            "(Bash를 부른 탭만 보입니다)")
+
+
+def prune_stale(now):
+    try:
+        for name in os.listdir(STALE):
+            path = os.path.join(STALE, name)
+            if now - os.path.getmtime(path) > SESSION_KEEP:
+                os.remove(path)
+    except OSError:
+        pass
+
+
 # ── 훅 판정 (질문 보류, 조건부 재개) ─────────────────────────────────
 
 ASKING = re.compile(r"[?？]|할까요|될까요|인가요|주세요|주시면|승인|기다리|대기 중|should i|shall i|let me know|waiting for|please confirm|would you like", re.I)
@@ -563,10 +722,23 @@ def file_size(path):
         return 0
 
 
+RECOMMENDED = re.compile(r"\(\s*(?:recommended|추천)\s*\)", re.I)
+
+
+def recommended(question):
+    """질문 하나의 추천 선택지 이름. 표시(`(Recommended)`·`(추천)`)가 정확히 하나이고 여러 개 고르기가 아닐 때만, 아니면 None."""
+    if not isinstance(question, dict) or question.get("multiSelect"):
+        return None
+    labels = [str(o.get("label", "")) for o in question.get("options") or [] if isinstance(o, dict)]
+    marked = [RECOMMENDED.sub("", label).strip() for label in labels if RECOMMENDED.search(label)]
+    return marked[0] if len(marked) == 1 and marked[0] else None
+
+
 def hook_question(data, st):
-    """질문 창(AskUserQuestion): 창 없이 거절하고 요지를 보류 목록에."""
-    questions = (data.get("tool_input") or {}).get("questions") or []
-    text = " / ".join(str(q.get("question", "")) for q in questions if isinstance(q, dict))
+    """질문 창(AskUserQuestion): 창 없이 거절하고 요지를 보류 목록에. 추천 선택지가 분명하면 안내에 적는다."""
+    questions = [q for q in (data.get("tool_input") or {}).get("questions") or [] if isinstance(q, dict)]
+    picks = [(str(q.get("question", "")), recommended(q)) for q in questions]
+    text = " / ".join(q + (f" (추천: {pick})" if pick else "") for q, pick in picks)
     rec = touch_session(data, "question", st)
     noted = "보류 목록에 적었습니다"
     try:
@@ -574,9 +746,15 @@ def hook_question(data, st):
                             "session": str(data.get("session_id") or ""), "text": mask_text(text)})
     except Exception:
         noted = "보류 목록 기록에 실패했으니 최종 보고에 직접 적으세요"
-    reason = (f"자리 비움 모드({hhmm(st['until'])}까지): 사용자가 없어 질문 창을 띄우지 않았습니다. 이 질문은 {noted}. "
-              "되돌릴 수 있는 결정이면 기본값으로 정해 그 이유를 기록하고 계속하고, 아니면 이 항목만 건너뛰고 남은 다른 일을 하세요. "
-              "같은 질문을 다시 띄우지 않습니다.")
+    reason = f"자리 비움 모드({hhmm(st['until'])}까지): 사용자가 없어 질문 창을 띄우지 않았습니다. 이 질문은 {noted}. "
+    named = [(q, pick) for q, pick in picks if pick]
+    if named:
+        chosen = named[0][1] if len(picks) == 1 else "; ".join(f"{mask_text(q, 40)} → {pick}" for q, pick in named)
+        reason += (f"추천 선택지: {mask_text(chosen, 300)}. 되돌릴 수 있는 결정이면 이것으로 정해 그 이유를 기록하고 계속하세요. "
+                   "배포·삭제·권한·push 승인이나 사용자가 답을 기다리라고 한 것은 추천이 있어도 정하지 말고 이 항목만 건너뛴 뒤 남은 다른 일을 하세요. ")
+    else:
+        reason += "되돌릴 수 있는 결정이면 기본값으로 정해 그 이유를 기록하고 계속하고, 아니면 이 항목만 건너뛰고 남은 다른 일을 하세요. "
+    reason += "같은 질문을 다시 띄우지 않습니다."
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason}}
 
 
@@ -637,12 +815,17 @@ def parse_end(until, duration, now):
 
 def status_obj(now=None):
     now = time.time() if now is None else now
-    st = load_state()
+    st, mode = load_state(), "away"
+    if not (st and now < st["until"]):  # 자리 비움이 유효하면 그쪽이 우선
+        other = load_state(AWAKE)
+        if other and (now < other["until"] or not st):
+            st, mode = other, "awake"
     on = bool(st and now < st["until"])
     caff = st.get("caffeinate") if st else None
     return {
         "ok": True,
         "active": on,
+        "mode": mode if on else None,
         "expired": bool(st and not on),
         "until": iso(st["until"]) if st else None,
         "until_epoch": int(st["until"]) if st else None,
@@ -653,9 +836,10 @@ def status_obj(now=None):
         "queue_count": len(queue_items()),
         "checks": (st.get("checks") or []) if st else [],
         "holds_count": len(hold_items()),
-        "tickets": [ticket_view(t) for t in tickets_of(st)] if on else [],
+        "tickets": [ticket_view(t) for t in tickets_of(st)] if on and mode == "away" else [],
         "ticket_candidates": ticket_candidates(),
         "sessions": session_items(now),
+        "stale_sessions": stale_items(now),
     }
 
 
@@ -663,6 +847,11 @@ def cmd_on(args):
     now = time.time()
     end = parse_end(args.until, args.duration, now)
     checks, warnings = [], []
+    mode = args.mode or "away"
+    if mode not in ("away", "awake"):
+        raise Fail(2, "usage", f"--mode는 away 또는 awake입니다 (받은 값: {mode})")
+    if mode == "awake" and args.ticket:
+        raise Fail(2, "bad_ticket", "잠자기 방지(--mode awake)에는 배포 티켓을 줄 수 없습니다 (티켓은 자리 비움에서만)")
     tickets = [parse_ticket(spec, n) for n, spec in enumerate(args.ticket or [], 1)]
     if len({(t["repo_key"], t["stack"]) for t in tickets}) != len(tickets):
         raise Fail(2, "bad_ticket", "같은 레포·스택의 티켓이 두 번 있습니다")
@@ -670,9 +859,11 @@ def cmd_on(args):
         pw = power()
         checks.append({"name": "power", "ok": pw["source"] == "ac", "detail": pw["source"]})
         checks.append({"name": "lid", "ok": pw["lid"] != "closed", "detail": pw["lid"]})
-        if pw["source"] == "battery":
+        if pw["source"] == "battery" and mode == "awake":
+            warnings.append(BATTERY_NOTE)  # 사용자가 자리에 있다. 자리 비움(무인)은 아래에서 거부한다
+        elif pw["source"] == "battery":
             raise Fail(3, "on_battery", "배터리 상태에서는 켜지 않습니다. 전원을 연결하고 다시 실행하세요")
-        if pw["source"] != "ac":
+        elif pw["source"] != "ac":
             raise Fail(3, "power_unknown", "전원 상태를 확인하지 못했습니다 (pmset -g batt). 켜지 않았습니다")
         if pw["lid"] == "closed":
             raise Fail(3, "lid_closed", "뚜껑이 닫혀 있습니다. 뚜껑을 열고 다시 실행하세요")
@@ -687,23 +878,36 @@ def cmd_on(args):
     except OSError:
         pass
     with state_lock():
-        old = load_state()
+        olds = [load_state(), load_state(AWAKE)]
         prune_sessions(now)
+        prune_stale(now)
         caff = start_caffeinate(max(1, int(end - time.time()))) if is_mac() else None
-        if old and not stop_caffeinate(old.get("caffeinate")):
-            warnings.append("이전 절전 방지(caffeinate)가 끝났는지 확인하지 못했습니다")
-        save_state({"version": 1, "id": f"{int(now)}-{os.getpid()}", "started": now, "until": end,
-                    "caffeinate": caff, "checks": checks, "tickets": tickets})
+        for old in olds:
+            if old and not stop_caffeinate(old.get("caffeinate")):
+                warnings.append("이전 절전 방지(caffeinate)가 끝났는지 확인하지 못했습니다")
+        new = {"version": 1, "id": f"{int(now)}-{os.getpid()}", "started": now, "until": end, "caffeinate": caff, "checks": checks}
+        # 두 상태 파일 중 하나만 남긴다: 새 것을 쓴 뒤 다른 모드의 파일을 지운다
+        if mode == "awake":
+            save_state(new, AWAKE)
+            remove_state()
+        else:
+            save_state(dict(new, tickets=tickets))
+            remove_state(AWAKE)
     out = status_obj()
+    if mode == "away" and out["stale_sessions"]:
+        warnings.append(stale_warning(out["stale_sessions"]))
     out["warnings"] = warnings
     if args.json:
         kitlib.emit(out)
         return 0
     left = int(end - now)
-    print(f"자리 비움 모드 켬: {hhmm(end)}까지 ({left // 3600}시간 {left % 3600 // 60}분)")
+    print(f"{'잠자기 방지' if mode == 'awake' else '자리 비움 모드'} 켬: {hhmm(end)}까지 ({left // 3600}시간 {left % 3600 // 60}분)")
     if caff:
         print(f"- 절전 방지: caffeinate pid {caff['pid']}. {LID_NOTE}")
-    print("- 확인이 필요한 명령은 확인 창 대신 거절되고 아침 목록에 쌓입니다. 질문은 보류 목록에 쌓입니다")
+    if mode == "awake":
+        print("- 자리 비움이 아닙니다: 확인 창과 질문은 평소대로 뜹니다 (떠날 때는 away.py on --mode away)")
+    else:
+        print("- 확인이 필요한 명령은 확인 창 대신 거절되고 아침 목록에 쌓입니다. 질문은 보류 목록에 쌓입니다")
     for t in tickets:
         print(f"- 배포 티켓: {t['stack']} ({t['repo']}) {t['limit']}회, 배포 전 테스트 {t['tests_note']}. 이 범위에서는 사람이 보지 않은 코드가 배포됩니다")
     if out["queue_count"]:
@@ -716,15 +920,21 @@ def cmd_on(args):
 
 def cmd_off(args):
     with state_lock():
-        st = load_state()
-        was_active = bool(st and time.time() < st["until"])
-        released = stop_caffeinate(st.get("caffeinate")) if st else True
-        remove_state()
+        now, st, was_active, was_mode, released = time.time(), None, False, None, True
+        for mode, path in (("away", STATE), ("awake", AWAKE)):  # 어느 모드든 끈다
+            one = load_state(path)
+            if one:
+                st = st or one
+                if now < one["until"] and not was_active:
+                    was_active, was_mode = True, mode
+                released = stop_caffeinate(one.get("caffeinate")) and released
+            remove_state(path)
     items = queue_items()
     if args.json:
-        kitlib.emit({"ok": True, "was_active": was_active, "caffeinate_released": released, "queue_count": len(items)})
+        kitlib.emit({"ok": True, "was_active": was_active, "mode": was_mode, "caffeinate_released": released, "queue_count": len(items)})
         return 0
-    print("자리 비움 모드 끔" if was_active else "자리 비움 모드는 꺼져 있었습니다" + (" (만료된 상태를 정리함)" if st else ""))
+    name = "잠자기 방지" if was_mode == "awake" else "자리 비움 모드"
+    print(f"{name} 끔" if was_active else "자리 비움 모드는 꺼져 있었습니다" + (" (만료된 상태를 정리함)" if st else ""))
     if not released:
         print("- 주의: 절전 방지(caffeinate)가 해제됐는지 확인하지 못했습니다: pmset -g assertions")
     print_runs(run_items())
@@ -754,7 +964,8 @@ def cmd_status(args):
         return 0
     if out["active"]:
         left = out["remaining_seconds"]
-        print(f"자리 비움 모드: 켜짐, {hhmm(out['until_epoch'])}까지 (남은 {left // 3600}시간 {left % 3600 // 60}분)")
+        name = "잠자기 방지 (확인 창·질문은 평소대로)" if out["mode"] == "awake" else "자리 비움 모드"
+        print(f"{name}: 켜짐, {hhmm(out['until_epoch'])}까지 (남은 {left // 3600}시간 {left % 3600 // 60}분)")
         if is_mac():
             caff = out["caffeinate"]
             print(f"- 절전 방지: {'caffeinate pid %s' % caff['pid'] if caff['alive'] else '꺼져 있음 (away.py on을 다시 실행)'}")
@@ -764,6 +975,9 @@ def cmd_status(args):
     print(f"- 아침 목록: {out['queue_count']}건, 보류된 질문: {out['holds_count']}건")
     for it in out["sessions"][:10]:
         print(f"- 탭 {os.path.basename(it['repo']) or it['cwd']}: {it['last_event']} {it['last_event_at'][11:16]}, 마지막 활동 {it['last_activity_at'][11:16]}")
+    for it in out["stale_sessions"]:
+        guess = "" if it["basis"] == "pid" else ", 떠 있는지는 추정"
+        print(f"- 재시작 권장: {os.path.basename(it['repo']) or it['cwd']} (kit 업데이트 전에 시작한 탭, 마지막 관측 {it['seen_at'][11:16]}{guess})")
     return 0
 
 
@@ -826,7 +1040,9 @@ def cmd_report(args):
 def note_active(st):
     text = (f"[37writes-kit] {hhmm(st['until'])}까지 자리 비움 모드입니다 (사용자가 자리에 없습니다). "
             "확인이 필요한 일은 아침 목록으로 넘기고, 되돌릴 수 있는 결정은 기본값으로 정해 기록하고, 다른 일을 계속합니다. "
-            "거절된 명령은 바꾸거나, 스크립트로 감싸거나, 다른 워커에게 넘겨 다시 시도하지 않습니다 (kit:harness \"자리 비움\").")
+            "거절된 명령은 바꾸거나, 스크립트로 감싸거나, 다른 워커에게 넘겨 다시 시도하지 않습니다. "
+            "Claude가 아닌 워커가 자기 권한 창에서 멈추면 사용자를 기다리지 말고 `orca orchestration deny --reason`으로 "
+            "worktree 안의 다른 방법을 알려 주거나 그 작업만 보류합니다 (kit:harness \"자리 비움\").")
     for t in tickets_of(st):
         here = os.path.dirname(os.path.abspath(__file__))
         text += (f"\n배포 티켓: {t.get('repo')} 의 스택 {t.get('stack')} ({t.get('used')}/{t.get('limit')}회 사용"
@@ -889,6 +1105,7 @@ def main(argv):
         p.add_argument("--until")
         p.add_argument("--for", dest="duration")
         p.add_argument("--ticket", action="append")
+        p.add_argument("--mode")
         p.add_argument("--json", action="store_true")
         for name in ("off", "status"):
             sub.add_parser(name).add_argument("--json", action="store_true")
