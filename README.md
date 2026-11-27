@@ -88,6 +88,11 @@ push가 곧 배포인 레포에서 프로필에 정책 줄을 두면, 정책 안
 - 평소 확인 창이 뜰 명령은 창 대신 **거절**되고 아침 목록에 쌓인다. 에이전트는 다른 일을 계속한다.
 - 질문 창은 뜨지 않고 보류 목록에 남는다. 글로 묻고 멈춘 탭은 최대 2번 "기본값으로 정하거나 보류하고 계속하라"로 이어진다.
 - **배포 티켓**을 준 CDK 스택만, 테스트와 `cdk diff` 검사를 통과하면 배포된다 (아래). 티켓이 없으면 통과되는 명령은 하나도 늘지 않는다.
+- 질문 창에 추천 표시(`(Recommended)`·`(추천)`)가 붙은 선택지가 하나면 거절 안내에 그 이름이 들어간다. 되돌릴 수 있는 결정은 에이전트가 그것으로 정하고, 배포·삭제·권한·push 승인은 추천이 있어도 보류한다.
+
+**잠자기만 막기** (0.24.0): 자리에 있으면서 맥이 잠들어 에이전트가 멈추는 것만 막고 싶을 때. 잠자기 방지(`caffeinate`)만 켜고 확인 창·질문 창은 평소대로 뜬다 (거절·보류·아침 목록·배포 티켓 없음). 배터리에서도 켜진다 (키 입력이 없을 때의 잠자기만 막는다). 떠날 때는 자리 비움으로 다시 켠다.
+
+**kit 업데이트 전에 시작한 Claude 탭** (0.24.0): 훅 목록은 Claude 프로세스가 뜰 때 고정된다. 업데이트 전에 뜬 탭은 자리 비움을 켜도 질문 보류·이어 가기가 없을 수 있어 밤새 질문에서 멈춘다. 그런 탭이 Bash를 부르면 기록해 두었다가 자리 비움을 켤 때와 앱에 "재시작 권장"으로 보여 주고, 그 탭 안에서는 "질문 창을 쓰지 말고 글로 묻고 끝내지 말라"는 안내를 넣는다. 탭을 다시 시작하면 사라진다.
 
 ### 상단바 앱 (macOS 14 이상)
 
@@ -98,7 +103,7 @@ open ~/Applications/AwayBar.app
 
 ![꺼진 상태의 패널](macos/panel-off.png) ![켜진 상태의 패널](macos/panel-on.png)
 
-끝 시각(30분·1·2·3시간·아침 8시·직접), 배포 티켓(에이전트가 남긴 후보나 직접 추가)을 고르고 "자리 비움 시작". 켜져 있는 동안 상단바에 남은 시간이 보인다. 돌아와서는 탭별 마지막 활동, 실행된 배포, 거절된 명령, 보류된 질문을 본다. 앱은 `away.py --json`만 부르므로 앱을 꺼도 모드는 그대로다. kit 폴더는 `~/.claude/plugins` 설치 기록 → `~/Documents/dev/37writes-claude-kit` 순으로 찾고, 못 찾으면 패널 아래 "kit 폴더"로 고른다. 이 Mac에서 빌드해 쓰는 앱이다 (공증 없음).
+모드(`자리 비움` | `잠자기만 막기`. 열 때마다 `자리 비움`이 기본이고 마지막 선택을 기억하지 않는다), 끝 시각(30분·1·2·3시간·아침 8시·직접), 배포 티켓(자리 비움만. 에이전트가 남긴 후보나 직접 추가)을 고르고 시작 단추. 재시작이 필요한 탭이 있으면 주의 카드가 보인다. 켜져 있는 동안 상단바에 남은 시간이 보인다. 돌아와서는 탭별 마지막 활동, 실행된 배포, 거절된 명령, 보류된 질문을 본다. 앱은 `away.py --json`만 부르므로 앱을 꺼도 모드는 그대로다. kit 폴더는 `~/.claude/plugins` 설치 기록 → `~/Documents/dev/37writes-claude-kit` 순으로 찾고, 못 찾으면 패널 아래 "kit 폴더"로 고른다. 이 Mac에서 빌드해 쓰는 앱이다 (공증 없음). kit를 업데이트하면 `install.sh`를 다시 돌린다 (0.23 앱은 잠자기 방지 상태를 "꺼짐"으로 보이고 끄지 못한다).
 
 ### 배포 티켓
 
@@ -116,20 +121,22 @@ away_deploy.py run --stack <스택> --cwd <cdk 앱 폴더>         # 에이전�
 
 ```sh
 ! sh <kit>/scripts/py.sh <kit>/scripts/away.py on --until 08:00   # 또는 --for 3h. 최대 12시간
-! sh <kit>/scripts/py.sh <kit>/scripts/away.py off                # 끄고 아침 목록을 보여 준다
+! sh <kit>/scripts/py.sh <kit>/scripts/away.py on --for 2h --mode awake   # 잠자기만 막기 (확인 창·질문은 평소대로)
+! sh <kit>/scripts/py.sh <kit>/scripts/away.py off                # 어느 모드든 끄고 아침 목록을 보여 준다
 ! sh <kit>/scripts/py.sh <kit>/scripts/away.py report             # 거절된 명령·보류된 질문·실행된 배포 (--clear로 비움)
 ```
 
 - 끝나는 시각은 필수이고, 그 시각이 지나면 스스로 꺼진 것으로 본다 (다시 평소 확인 창). 넉넉히 잡는다. 상태는 `~/.config/37writes-kit/away/` 하나라 같은 계정의 모든 레포·세션에 걸린다.
-- macOS에서는 전원 연결·뚜껑 열림을 확인하고 `caffeinate -i -s`로 유휴 잠자기를 막는다. 배터리·뚜껑 닫힘이면 켜지 않는다. **켠 뒤 뚜껑을 닫거나 전원을 뽑으면 잠든다.** 다른 OS는 절전 방지를 건너뛴다.
+- macOS에서는 전원 연결·뚜껑 열림을 확인하고 `caffeinate -i -s`로 유휴 잠자기를 막는다. 배터리·뚜껑 닫힘이면 켜지 않는다. **켠 뒤 뚜껑을 닫거나 전원을 뽑으면 잠든다.** 다른 OS는 절전 방지를 건너뛴다. `--mode awake`는 배터리에서도 켜고 주의만 준다 (`-s`는 전원 연결 때만 듣는다. 뚜껑 닫힘·전원 미확인은 똑같이 거부).
+- 모드는 한 번에 하나다. 다시 `on`하면 이전 모드와 잠자기 방지를 바꾼다 (자리 비움 → 잠자기만 막기로 바꾸면 티켓도 사라진다). 잠자기 방지 상태는 `awake.json`에 따로 두어, 다른 버전의 kit로 떠 있는 탭도 "꺼짐"으로 읽는다.
 - 아침 목록에는 레포, 이유, 명령(`이름=값`의 값과 시크릿 패턴을 가리고(완전하지 않다. 0600 파일이고 대화에는 건수만 붙는다) 긴 명령은 앞 150자 + 뒤 60자)이 남고, 같은 명령은 한 건으로 묶여 횟수가 보인다. 자동으로 다시 실행하지 않는다.
 - 돌아와서 일할 때 켜져 있으면 확인 창 대신 거절이 온다. 거절 이유에 끝 시각이 보이고 `off`로 끈다. 사용자의 `! 명령`은 훅을 거치지 않으므로 모드와 상관없이 실행된다.
 
 | 명령 | 끝 코드 | `--json` 출력 |
 |---|---|---|
-| `on --until HH:MM` \| `--for 3h` `[--ticket …]` | 0 켬 · 2 인자 오류(`no_until` `bad_time` `too_long` `bad_ticket` `usage`) · 3 시작 거부(`on_battery` `lid_closed` `power_unknown`) · 4 `caffeinate_failed` · 1 그 밖 | status와 같은 모양 + `warnings`. 실패는 `{ok:false, error, message}` |
-| `off` | 0 (꺼져 있어도) · 1 `state_not_removed`(상태 파일이 남음. 절전 방지는 이미 풀렸을 수 있으니 `status`로 확인) | `{ok, was_active, caffeinate_released, queue_count}`. 실패는 `{ok:false, error, message}` |
-| `status` | 0 | `{ok, active, expired, until, until_epoch, remaining_seconds, started, caffeinate:{pid, alive}, power:{source, lid}, queue_count, checks, holds_count, tickets:[{id, repo, stack, limit, used, locked, note, tests}], ticket_candidates:[{repo, stack, source, note}], sessions:[{session, repo, cwd, last_event, last_event_at, last_activity_at}]}`. 꺼져 있으면 시각은 `null`, 만료면 `expired:true` |
+| `on --until HH:MM` \| `--for 3h` `[--mode away\|awake]` `[--ticket …]` | 0 켬 · 2 인자 오류(`no_until` `bad_time` `too_long` `bad_ticket`(awake에 티켓 포함) `usage`(모르는 모드 포함)) · 3 시작 거부(`on_battery`(away만) `lid_closed` `power_unknown`) · 4 `caffeinate_failed` · 1 그 밖 | status와 같은 모양 + `warnings`. 실패는 `{ok:false, error, message}` |
+| `off` | 0 (꺼져 있어도) · 1 `state_not_removed`(상태 파일이 남음. 절전 방지는 이미 풀렸을 수 있으니 `status`로 확인) | `{ok, was_active, mode, caffeinate_released, queue_count}`. 실패는 `{ok:false, error, message}` |
+| `status` | 0 | `{ok, active(어느 모드든 켜짐), mode(away\|awake\|null), stale_sessions:[{session, repo, cwd, seen_at, basis(pid\|time)}], expired, until, until_epoch, remaining_seconds, started, caffeinate:{pid, alive}, power:{source, lid}, queue_count, checks, holds_count, tickets:[{id, repo, stack, limit, used, locked, note, tests}], ticket_candidates:[{repo, stack, source, note}], sessions:[{session, repo, cwd, last_event, last_event_at, last_activity_at}]}`. 꺼져 있으면 시각은 `null`, 만료면 `expired:true` |
 | `report [--clear]` | 0 | `{ok, count, items:[{key, first, last, count, repo, reasons, command}], holds:[{ts, kind, repo, session, text}], runs:[{ts, repo, stack, result, code, steps, diff, log}]}` |
 | `request --stack <스택>` | 0 · 2 인자 오류 | `{ok, repo, stack}` |
 | `away_deploy.py run --stack <스택>` | 0 배포됨·변경 없음 · 2 인자 오류 · 3 티켓 없음·소진·잠김 · 4 검사에서 막힘 · 5 배포 실패 · 1 그 밖 | `{ok, result(deployed\|no_changes\|blocked\|failed\|refused), stack, message, steps, diff, log}` |
@@ -143,6 +150,8 @@ away_deploy.py run --stack <스택> --cwd <cdk 앱 폴더>         # 에이전�
 - `cdk diff` 해석은 실제 CDK 버전의 출력으로 보정하지 않았다. 모르는 줄이 있으면 배포하지 않는 쪽이라, 첫 사용에서 정상 변경이 막힐 수 있다 (그때 로그를 보고 고친다).
 - 배포 실행기 로그(`~/.config/37writes-kit/away/logs/`, 0600)에는 테스트·cdk가 출력한 글이 그대로 남는다 (`이름=값` 모양만 가린다). 실패 원인을 보려고 남기며 `report --clear`(패널의 비우기)가 지운다.
 - 사용량 한도, 로그인 만료, 네트워크 끊김으로 멈춘 세션은 다시 살리지 않는다.
+- kit 훅은 Claude Code에서만 돈다. Codex·opencode 같은 다른 에이전트 탭의 자체 권한 창은 막지도 넘기지도 못한다. 지휘 세션이 그 알림을 받으면 기다리지 않고 거절·보류하게 하는 규칙(harness)뿐이다.
+- "재시작 권장"은 **보인 탭만** 알려 준다. 업데이트 뒤 Bash를 한 번도 안 부른 예전 탭, kit 없이 뜬 Claude, 다른 에이전트 탭은 보이지 않는다 (목록이 비어도 예전 탭이 없다는 뜻이 아니다). `--plugin-dir`로 한 폴더를 계속 읽는 설치에서만 동작하고, 플러그인 캐시 설치(버전별 폴더)의 예전 탭은 예전 스크립트를 그대로 써서 기록되지 않는다. 0.23에서 뜬 탭(자리 비움 훅은 다 있음)도 업데이트 직후 한 번 권장으로 나온다. 프로세스 번호를 못 읽으면 마지막 관측 뒤 2시간 동안만 추정으로 보인다.
 
 ## /kit 패널
 
@@ -161,7 +170,7 @@ away_deploy.py run --stack <스택> --cwd <cdk 앱 폴더>         # 에이전�
 | Orca 작업 절차 | 세션 시작 (Orca IDE 안에서만, 모든 레포) | 워커/지휘 세션 판정, 지휘 세션은 첫 요청 전에 kit:harness를 읽고, 다른 모델 의견은 Orca 워커 탭으로 |
 | 위험 명령 확인 | 명령 실행 직전 (모든 레포) | git push(프로필이 `push: 배포 아님`이면 강제·삭제 push만, 자동 배포 정책 안의 SHA push는 통과), reset --hard, rm -rf ~, DROP TABLE, AWS 삭제, cdk deploy, terraform apply, IAM 권한 변경 등은 사용자 확인 |
 | 자리 비움 질문 보류 | 질문 창 직전·턴 종료 (모든 레포, 모드가 켜져 있을 때) | 질문 창은 거절하고 보류 목록에, 글로 묻고 끝낸 턴은 최대 2번 이어 가게 한다 (Orca 워커·서브에이전트 제외). 꺼져 있으면 아무것도 하지 않는다 |
-| 자리 비움 알림 | 세션 시작·요청마다 (모든 레포, 모드가 켜져 있을 때) | "HH:MM까지 자리 비움 모드" 한 줄: 확인이 필요한 일은 아침 목록으로, 되돌릴 수 있는 결정은 기본값으로, 다른 일을 계속. 꺼져 있고 아침 목록이 남았으면 세션 시작 때 건수만 |
+| 자리 비움 알림 | 세션 시작·요청마다 (모든 레포, 모드가 켜져 있을 때) | "HH:MM까지 자리 비움 모드" 한 줄: 확인이 필요한 일은 아침 목록으로, 되돌릴 수 있는 결정은 기본값으로, 다른 일을 계속. 꺼져 있고 아침 목록이 남았으면 세션 시작 때 건수만. 잠자기만 막기(`--mode awake`)에서는 알림·거절·보류가 없다. kit 업데이트 전에 시작한 탭은 위험 명령 확인 훅이 Bash 호출 때 같은 알림 + 재시작 안내를 넣는다 (회차당 1번) |
 | commit-msg (git 훅) | 모든 커밋 | 커밋 메시지 형식 검사. VS Code에서 직접 커밋해도 적용 |
 
 kit 프로젝트 = CLAUDE.md에 프로필 블록(`<!-- 37writes-kit:profile:start -->`)이 있는 git 레포. 예전에 init한 레포(`docs/devlog/`가 있음)도 호환으로 인식한다. `docs/plans/`만 있는 레포는 kit 프로젝트가 아니다. kit 프로젝트가 아니어도 "이어서 해줘"는 동작한다.
@@ -206,3 +215,4 @@ type: feat, fix, docs, refactor, perf, test, style, build, ci, chore, revert
 - [x] 0.21.0: 프로필 값 `미정`과 `없음 (확인함)` 구분, 폴더별 명령 형식(`web: … · tools: …`). init·harness·plan·check가 `미정`·맨 "없음"을 다시 채울 대상으로 보고(check는 보완 후보만 제안), SessionStart가 테스트 설정이 있는데 테스트 줄이 `미정`·맨 "없음"이면 재확인 알림(2초 안, 실패하면 건너뜀)
 - [x] 0.22.0: 자리 비움 모드 1단계. `away.py on --until HH:MM`으로 켜면 확인 창 대신 거절 + 아침 목록(권한은 그대로), macOS는 전원·뚜껑 점검 뒤 `caffeinate`, 세션 시작·요청마다 모드 알림, 메뉴 막대 앱이 부를 끝 코드·JSON 계약
 - [x] 0.23.0: 자리 비움 2단계. macOS 상단바 앱 AwayBar(`macos/install.sh`), guard가 글 속의 단어(커밋 메시지·heredoc·grep 인자)를 명령으로 오인하지 않게 셸 구문 해석 + `cdk --profile x deploy` 같은 미탐 보강, 질문 창 보류와 글 질문 뒤 조건부 재개(Stop 훅), CDK 배포 티켓과 실행기 `away_deploy.py`(테스트·`cdk diff` 검사 뒤 1회), 탭별 마지막 활동
+- [x] 0.24.0: 잠자기만 막기 모드(`--mode awake`, 앱의 모드 선택: 확인 창·질문은 평소대로, 배터리 허용), kit 업데이트 전에 시작한 Claude 탭을 기록해 "재시작 권장"으로 보이고 그 탭에 안내, 질문 창 거절 안내에 추천 선택지, 다른 에이전트 워커의 권한 창에서 기다리지 않는 규칙
