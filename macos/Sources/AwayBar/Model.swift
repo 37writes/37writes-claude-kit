@@ -25,6 +25,8 @@ final class AwayModel: ObservableObject {
     @Published var drafts: [TicketDraft] = []
     @Published var loginItem = false
     @Published var panelOpen = false
+    /// 켤 모드. 저장하지 않는다: 패널을 열 때마다 자리 비움으로 돌아간다 (`잠자기만 막기`가 남은 채 떠나면 확인 창에서 멈춘다).
+    @Published var mode: AwayMode = .away
 
     private var timer: Timer?
     private var lastRefresh = Date.distantPast
@@ -50,6 +52,20 @@ final class AwayModel: ObservableObject {
         return max(0, end - Int(now.timeIntervalSince1970))
     }
     var active: Bool { (status?.active ?? false) && remaining > 0 }
+    /// 켜져 있는 모드 (꺼져 있으면 nil).
+    var activeMode: AwayMode? { active ? status?.activeMode : nil }
+    /// kit 업데이트 전에 시작한 탭. 자리 비움을 고르거나 켠 동안에만 보인다 (잠자기만 막기에서는 훅이 하는 일이 없다).
+    var staleSessions: [StaleSession] {
+        guard (activeMode ?? mode) == .away else { return [] }
+        return status?.stale_sessions ?? []
+    }
+
+    /// 패널을 열 때: 켤 모드를 기본(자리 비움)으로 되돌린다.
+    func panelOpened() {
+        panelOpen = true
+        mode = .away
+        refresh()
+    }
 
     var chosenEnd: EndChoice {
         guard useCustom else { return end }
@@ -62,8 +78,7 @@ final class AwayModel: ObservableObject {
         if kit == nil { return "kit 폴더를 찾지 못했습니다. 아래에서 폴더를 고르세요" }
         if AwayClient.findPython() == nil { return "python3를 찾지 못했습니다" }
         guard let st = status else { return message ?? "상태를 읽는 중" }
-        if st.power.source == "battery" { return "배터리로 동작 중입니다. 전원을 연결하면 시작할 수 있습니다" }
-        if st.power.lid == "closed" { return "맥북이 덮여 있어요. 덮은 상태에서는 잠자기를 막을 수 없어 시작하지 않습니다" }
+        if let why = StartCheck.blocker(mode: mode, power: st.power) { return why }
         if !chosenEnd.isAllowed(from: now) { return "끝 시각은 지금부터 12시간 안이어야 합니다" }
         return nil
     }
@@ -130,8 +145,10 @@ final class AwayModel: ObservableObject {
 
     func start() {
         let end = chosenEnd
-        let tickets = drafts.filter(\.selected).map { (candidate: $0.candidate, limit: $0.limit) }
-        perform { _ = try $0.on(end: end, tickets: tickets) }
+        let mode = mode
+        // 잠자기만 막기에는 티켓이 없다 (고른 것이 있어도 넘기지 않는다)
+        let tickets = mode == .away ? drafts.filter(\.selected).map { (candidate: $0.candidate, limit: $0.limit) } : []
+        perform { _ = try $0.on(end: end, tickets: tickets, mode: mode) }
     }
 
     func stop() {

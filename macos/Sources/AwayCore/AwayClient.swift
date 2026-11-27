@@ -99,18 +99,21 @@ public struct AwayClient {
         try Self.decode(AwayReport.self, from: run(["report", "--json"] + (clear ? ["--clear"] : [])))
     }
 
-    public static func onArguments(end: EndChoice, tickets: [(candidate: TicketCandidate, limit: Int)]) -> [String] {
-        ["on"] + end.arguments + tickets.flatMap { ["--ticket", "\($0.candidate.repo)::\($0.candidate.stack)::\($0.limit)"] } + ["--json"]
+    /// 자리 비움은 `--mode`를 붙이지 않는다 (0.23 kit도 받는 인자 그대로). 잠자기만 막기에는 티켓을 넘기지 않는다 (away.py가 인자 오류로 본다).
+    public static func onArguments(end: EndChoice, tickets: [(candidate: TicketCandidate, limit: Int)], mode: AwayMode = .away) -> [String] {
+        if mode == .awake { return ["on"] + end.arguments + ["--mode", "awake", "--json"] }
+        return ["on"] + end.arguments + tickets.flatMap { ["--ticket", "\($0.candidate.repo)::\($0.candidate.stack)::\($0.limit)"] } + ["--json"]
     }
 
-    public func on(end: EndChoice, tickets: [(candidate: TicketCandidate, limit: Int)]) throws -> AwayStatus {
-        try Self.decode(AwayStatus.self, from: run(Self.onArguments(end: end, tickets: tickets)))
+    public func on(end: EndChoice, tickets: [(candidate: TicketCandidate, limit: Int)], mode: AwayMode = .away) throws -> AwayStatus {
+        try Self.decode(AwayStatus.self, from: run(Self.onArguments(end: end, tickets: tickets, mode: mode)))
     }
 
     public struct OffResult: Codable {
         public var ok: Bool
         public var was_active: Bool
         public var caffeinate_released: Bool
+        public var mode: String?
     }
 
     public func off() throws -> OffResult {

@@ -18,6 +18,7 @@ struct PanelView: View {
             header
             if let message = model.message { notice(message) }
             if model.active { activeSection } else { setupSection }
+            stale
             sessions
             morning
             footer
@@ -34,11 +35,12 @@ struct PanelView: View {
     // MARK: 머리
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Image(systemName: model.active ? "cup.and.heat.waves.fill" : "cup.and.saucer")
+        let awake = model.activeMode == .awake
+        return HStack(spacing: 8) {
+            Image(systemName: awake ? "sun.max.fill" : (model.active ? "cup.and.heat.waves.fill" : "cup.and.saucer"))
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(model.active ? Color.accentColor : .secondary)
-            Text("자리 비움").font(.system(size: 15, weight: .semibold))
+            Text(awake ? "잠자기 방지 중" : (model.active ? "자리 비움 중" : "자리 비움")).font(.system(size: 15, weight: .semibold))
             Spacer()
         }
     }
@@ -56,6 +58,7 @@ struct PanelView: View {
 
     private var setupSection: some View {
         VStack(alignment: .leading, spacing: 14) {
+            modePicker
             VStack(alignment: .leading, spacing: 2) {
                 Text(endClock).font(.system(size: 30, weight: .semibold, design: .rounded)).monospacedDigit()
                 Text("까지 · " + Format.remainingWords(model.chosenEnd.seconds(from: model.now)))
@@ -73,10 +76,10 @@ struct PanelView: View {
                 DatePicker("끝 시각", selection: $model.custom, displayedComponents: .hourAndMinute)
                     .datePickerStyle(.field).font(.callout)
             }
-            tickets
+            if model.mode == .away { tickets }
             VStack(spacing: 8) {
                 Button(action: model.start) {
-                    Text(model.busy ? "시작하는 중" : "자리 비움 시작")
+                    Text(model.busy ? "시작하는 중" : (model.mode == .awake ? "잠자기 방지 시작" : "자리 비움 시작"))
                         .font(.system(size: 14, weight: .semibold))
                         .frame(maxWidth: .infinity).padding(.vertical, 9)
                         .foregroundStyle(.white)
@@ -95,17 +98,35 @@ struct PanelView: View {
         }
     }
 
+    /// 켤 모드. 떠날 때(자리 비움)와 자리에 있을 때(잠자기만 막기)를 가른다.
+    private var modePicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                chip("자리 비움", selected: model.mode == .away) { model.mode = .away }
+                chip("잠자기만 막기", selected: model.mode == .awake) { model.mode = .awake }
+            }
+            Text(model.mode == .awake
+                 ? "자리에 있을 때. 맥이 잠들지 않게만 하고 확인 창과 질문은 평소대로 떠요."
+                 : "떠날 때. 확인이 필요한 명령과 질문은 보류하고 에이전트가 다른 일을 계속해요.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var endClock: String {
         let end = model.now.addingTimeInterval(TimeInterval(model.chosenEnd.seconds(from: model.now)))
         let f = DateFormatter(); f.dateFormat = "HH:mm"
         return f.string(from: end)
     }
 
-    private var powerRow: some View {
-        let ac = model.status?.power.source == "ac"
-        return Label(ac ? "전원 연결됨 · 맥북을 연 채로 두면 \(endClock)까지 잠들지 않아요" : "전원 상태를 확인하지 못했어요",
-                     systemImage: ac ? "powerplug" : "questionmark.circle")
-            .font(.caption).foregroundStyle(.secondary)
+    @ViewBuilder private var powerRow: some View {
+        if let power = model.status?.power, let warning = StartCheck.warning(mode: model.mode, power: power) {
+            Label(warning, systemImage: "bolt.slash").font(.caption).foregroundStyle(.orange)
+        } else {
+            let ac = model.status?.power.source == "ac"
+            Label(ac ? "전원 연결됨 · 맥북을 연 채로 두면 \(endClock)까지 잠들지 않아요" : "전원 상태를 확인하지 못했어요",
+                  systemImage: ac ? "powerplug" : "questionmark.circle")
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 
     private var tickets: some View {
@@ -182,7 +203,9 @@ struct PanelView: View {
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain).disabled(model.busy)
-                Text("맥북을 덮으면 잠들어 작업이 멈춰요. 연 채로 두세요. 확인이 필요한 명령과 질문은 보류되어 목록에 남습니다.")
+                Text(model.activeMode == .awake
+                     ? "확인 창과 질문은 평소대로 떠요. 맥북을 덮으면 잠들어 작업이 멈춥니다. 자리를 비울 때는 끄고 자리 비움으로 다시 켜세요."
+                     : "맥북을 덮으면 잠들어 작업이 멈춰요. 연 채로 두세요. 확인이 필요한 명령과 질문은 보류되어 목록에 남습니다.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -190,6 +213,27 @@ struct PanelView: View {
     }
 
     // MARK: 탭, 아침 목록
+
+    /// kit 업데이트 전에 시작한 Claude 탭: 자리 비움 훅(질문 보류·이어 가기)이 없을 수 있다. 있을 때만 보인다 (없다고 표시하지 않는다).
+    @ViewBuilder private var stale: some View {
+        let list = model.staleSessions
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("재시작 권장 · 탭 \(list.count)개", systemImage: "arrow.clockwise.circle.fill")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                ForEach(list.prefix(4)) { s in
+                    row(Format.repoName(s.repo.isEmpty ? s.cwd : s.repo), s.basis == "pid" ? "" : "떠 있는지는 추정",
+                        "마지막 관측 " + Format.clock(s.seen_at))
+                }
+                if list.count > 4 { Text("외 \(list.count - 4)개 (전체: away.py status)").font(.caption2).foregroundStyle(.tertiary) }
+                Text("kit 업데이트 전에 시작한 Claude 탭이라 질문에서 멈출 수 있어요. 탭을 다시 시작하면 사라집니다. (명령을 실행한 탭만 보여요)")
+                    .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
 
     @ViewBuilder private var sessions: some View {
         let list = model.status?.sessions ?? []

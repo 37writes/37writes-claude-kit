@@ -7,11 +7,13 @@ import SwiftUI
 enum AwayBarApp {
     @MainActor
     static func main() {
-        // 확인용: `AwayBar --snapshot <png>`는 패널을 창 없이 그려 저장하고 끝낸다 (상단바 패널은 자동 캡처가 어렵다).
+        // 확인용: `AwayBar --snapshot <png> [--mode awake] [--do start|stop]`은 패널을 창 없이 그려 저장하고 끝낸다 (상단바 패널은 자동 캡처가 어렵다).
         let args = CommandLine.arguments
-        if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
-            let j = args.firstIndex(of: "--do")
-            Snapshot.run(to: args[i + 1], action: j.flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil })
+        func value(_ flag: String) -> String? {
+            args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+        }
+        if let path = value("--snapshot") {
+            Snapshot.run(to: path, action: value("--do"), mode: value("--mode").flatMap(AwayMode.init(rawValue:)) ?? .away)
         }
         let app = NSApplication.shared
         let bar = BarController()
@@ -56,7 +58,9 @@ final class BarController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func updateLabel() {
         guard let button = item.button else { return }
-        let image = NSImage(systemSymbolName: model.active ? "cup.and.heat.waves.fill" : "cup.and.saucer", accessibilityDescription: "자리 비움")
+        let awake = model.activeMode == .awake
+        let image = NSImage(systemSymbolName: awake ? "sun.max.fill" : (model.active ? "cup.and.heat.waves.fill" : "cup.and.saucer"),
+                            accessibilityDescription: awake ? "잠자기 방지" : "자리 비움")
         image?.isTemplate = true
         button.image = image
         button.title = model.active ? Format.remaining(model.remaining) : ""
@@ -72,8 +76,7 @@ final class BarController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func show() {
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        model.panelOpen = true
-        model.refresh()
+        model.panelOpened()
         panel.contentView?.layoutSubtreeIfNeeded()
         place(panel, size: panel.contentView?.fittingSize ?? panel.frame.size)
         NSApp.activate(ignoringOtherApps: true)
@@ -120,11 +123,12 @@ final class BarController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
 @MainActor
 enum Snapshot {
-    /// action: start(첫 티켓 후보를 골라 시작 단추와 같은 경로) | stop(끄기 단추와 같은 경로) | nil
-    static func run(to path: String, action: String? = nil) {
+    /// action: start(첫 티켓 후보를 골라 시작 단추와 같은 경로) | stop(끄기 단추와 같은 경로) | nil. mode: 켜기 전 화면에서 고른 모드
+    static func run(to path: String, action: String? = nil, mode: AwayMode = .away) {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let model = AwayModel()
+        model.mode = mode
         let host = NSHostingView(rootView: PanelView(model: model).fixedSize().background(Color(nsColor: .windowBackgroundColor)))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 10), styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = host

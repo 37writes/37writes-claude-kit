@@ -56,6 +56,49 @@ final class AwayCoreTests: XCTestCase {
         XCTAssertEqual(st.ticket_candidates.first?.id, "/r/app::Demo")
         XCTAssertEqual(st.sessions.first?.last_event, "stop")
         XCTAssertNil(st.warnings)
+        // 0.23 kit의 출력(mode 없음): 켜져 있으면 자리 비움으로 읽는다
+        XCTAssertNil(st.mode)
+        XCTAssertEqual(st.activeMode, .away)
+        XCTAssertEqual(st.stale_sessions, [])
+    }
+
+    func testDecodeModeAndStaleSessions() throws {
+        // 0.24 status: 잠자기만 막기 + kit 업데이트 전에 시작한 탭
+        let json = """
+        {"ok": true, "active": true, "mode": "awake", "expired": false, "until": "2026-11-27T16:00:00+09:00", "until_epoch": 1795762800,
+         "remaining_seconds": 3600, "started": "2026-11-27T15:00:00+09:00", "caffeinate": {"pid": 11, "alive": true},
+         "power": {"source": "battery", "lid": "open"}, "queue_count": 0, "checks": [], "holds_count": 0,
+         "tickets": [], "ticket_candidates": [], "sessions": [],
+         "stale_sessions": [{"session": "s9", "repo": "/r/newOpen", "cwd": "/r/newOpen/infra", "seen_at": "2026-11-27T14:55:00+09:00", "basis": "pid"},
+                            {"session": "", "repo": "/r/app", "cwd": "/r/app", "seen_at": "2026-11-27T14:10:00+09:00", "basis": "time"}]}
+        """
+        let st = try AwayClient.decode(AwayStatus.self, from: .init(code: 0, stdout: Data(json.utf8)))
+        XCTAssertEqual(st.activeMode, .awake)
+        XCTAssertEqual(st.stale_sessions.map(\.basis), ["pid", "time"])
+        XCTAssertEqual(Format.clock(st.stale_sessions[0].seen_at), "14:55")
+        XCTAssertEqual(Set(st.stale_sessions.map(\.id)).count, 2)
+        // 꺼져 있으면 모드가 없다. 모르는 모드 값은 자리 비움으로 (더 조심스러운 쪽)
+        let off = #"{"ok": true, "active": false, "mode": null, "expired": false, "until": null, "until_epoch": null, "remaining_seconds": 0, "caffeinate": {"pid": null, "alive": false}, "power": {"source": "ac", "lid": "open"}, "queue_count": 0, "stale_sessions": []}"#
+        XCTAssertNil(try AwayClient.decode(AwayStatus.self, from: .init(code: 0, stdout: Data(off.utf8))).activeMode)
+        let odd = off.replacingOccurrences(of: #""active": false, "mode": null"#, with: #""active": true, "mode": "later""#)
+        XCTAssertEqual(try AwayClient.decode(AwayStatus.self, from: .init(code: 0, stdout: Data(odd.utf8))).activeMode, .away)
+    }
+
+    func testStartCheckByMode() {
+        let battery = AwayStatus.Power(source: "battery", lid: "open")
+        let ac = AwayStatus.Power(source: "ac", lid: "open")
+        let closed = AwayStatus.Power(source: "ac", lid: "closed")
+        // 배터리: 자리 비움은 막고, 잠자기만 막기는 주의만
+        XCTAssertNotNil(StartCheck.blocker(mode: .away, power: battery))
+        XCTAssertNil(StartCheck.blocker(mode: .awake, power: battery))
+        XCTAssertNotNil(StartCheck.warning(mode: .awake, power: battery))
+        XCTAssertNil(StartCheck.warning(mode: .away, power: battery))
+        XCTAssertNil(StartCheck.blocker(mode: .away, power: ac))
+        XCTAssertNil(StartCheck.warning(mode: .awake, power: ac))
+        // 뚜껑 닫힘은 둘 다 막는다
+        XCTAssertNotNil(StartCheck.blocker(mode: .away, power: closed))
+        XCTAssertNotNil(StartCheck.blocker(mode: .awake, power: closed))
+        XCTAssertNotNil(StartCheck.blocker(mode: .awake, power: .init(source: "battery", lid: "closed")))
     }
 
     func testDecodeOffStatusWithNulls() throws {
@@ -123,6 +166,11 @@ final class AwayCoreTests: XCTestCase {
         XCTAssertEqual(AwayClient.onArguments(end: .minutes(120), tickets: [(t, 2)]),
                        ["on", "--for", "2h", "--ticket", "/r/my app::Demo::2", "--json"])
         XCTAssertEqual(AwayClient.onArguments(end: .clock(hour: 8, minute: 0), tickets: []), ["on", "--until", "08:00", "--json"])
+        // 자리 비움은 0.23 kit도 받는 인자 그대로 (--mode 없음). 잠자기만 막기는 티켓을 넘기지 않는다
+        XCTAssertEqual(AwayClient.onArguments(end: .minutes(120), tickets: [(t, 2)], mode: .away),
+                       ["on", "--for", "2h", "--ticket", "/r/my app::Demo::2", "--json"])
+        XCTAssertEqual(AwayClient.onArguments(end: .minutes(120), tickets: [(t, 2)], mode: .awake),
+                       ["on", "--for", "2h", "--mode", "awake", "--json"])
     }
 
     func testKitLocatorOrderAndInstalledJSON() throws {
@@ -171,9 +219,17 @@ final class AwayCoreTests: XCTestCase {
         XCTAssertThrowsError(try client.on(end: .minutes(60), tickets: [(TicketCandidate(repo: "/nope", stack: "Demo"), 1)])) {
             XCTAssertEqual(($0 as? AwayFailure)?.error, "bad_ticket")
         }
+        XCTAssertEqual(try client.status().activeMode, .away)
+        // 잠자기만 막기로 바꿈 → 자리 비움은 꺼지고(티켓 없음) 잠자기 방지는 살아 있다
+        let awake = try client.on(end: .minutes(30), tickets: [], mode: .awake)
+        XCTAssertEqual(awake.activeMode, .awake)
+        XCTAssertEqual(awake.tickets, [])
+        XCTAssertTrue(try client.status().caffeinate.alive)
         let off = try client.off()
         XCTAssertTrue(off.was_active && off.caffeinate_released)
+        XCTAssertEqual(off.mode, "awake")
         XCTAssertFalse(try client.status().active)
+        XCTAssertNil(try client.status().activeMode)
         XCTAssertEqual(try client.report().count, 0)
     }
 }
