@@ -1,7 +1,7 @@
 ---
 title: 자리 비움 멈춤 수정과 잠자기 방지 전용 모드
 date: 2026-11-27
-status: draft
+status: approved
 tier: T1
 ---
 
@@ -17,78 +17,87 @@ tier: T1
 4. 사용자는 "자리 비움이면 추천 선택지로 알아서 진행"을 기대했는데, 질문 창 거절 안내에는 추천 선택지 언급이 없다.
 
 ## 범위
-- **포함**: 모드 구분(`away`·`awake`), 예전 훅 세션 감지와 안내, 질문 창 거절 안내에 추천 선택지, 워커 권한 대기 규칙(harness·모드 알림), AwayBar 앱의 모드 선택·재시작 필요 표시, `test_away.sh`의 Orca 워커 환경 격리, 0.24.0.
-- **제외**: guard 완화(push·배포 확인 줄이기, 시크릿 git 훅) → 권한이 넓어지는 결정이라 별도 기획서로 승인받는다. opencode·Codex 자체 권한 설정 변경(사용자 환경). hooks.json에 새 이벤트 추가(예전 세션을 더 만들 뿐이다).
+- **포함**: 모드 구분(`away`·`awake`), 0.24 이전에 뜬 Claude 탭 기록과 안내, 질문 창 거절 안내에 추천 선택지, 워커 권한 대기 규칙(harness·모드 알림), AwayBar 앱의 모드 선택·재시작 권장 표시, `test_away.sh`의 Orca 워커 환경 격리, 0.24.0.
+- **제외**: guard 완화(push·배포 확인 줄이기, 시크릿 git 훅) → 권한이 넓어지는 결정이라 별도 기획서로 승인받는다. opencode·Codex 자체 권한 설정 변경(사용자 환경). hooks.json에 새 이벤트 추가(예전 세션을 더 만들 뿐이다). 아직 Bash를 한 번도 부르지 않은 예전 탭 찾기(관측할 방법이 없다).
 
 ## 동작
 ### 모드
 - `away.py on --for 2h --mode awake`: 잠자기 방지만. caffeinate는 같다. guard·질문 창·Stop·모드 알림·배포 티켓은 **꺼져 있을 때와 같다** (확인 창이 평소대로 뜬다).
 - `--mode away`(기본, 생략 가능): 지금 동작 그대로.
-- `awake`는 배터리에서도 켠다 (경고만). `away`는 지금처럼 배터리에서 거부한다. 뚜껑 닫힘·전원 미확인은 둘 다 거부.
-- `awake`에 `--ticket`을 주면 인자 오류(2).
-- 다시 `on`하면 모드가 바뀐다 (기존: 새 caffeinate 시작 뒤 이전 것 종료).
+- **awake 상태는 `awake.json`에 따로 둔다.** `state.json`은 지금처럼 자리 비움만 담는다 → 예전 스크립트(다른 버전 폴더로 떠 있는 탭)는 `awake.json`을 읽지 않으므로 awake를 꺼짐으로 본다. 두 파일은 `state.lock` 안에서 하나만 남긴다 (다시 `on`하면 새 caffeinate 시작 → 이전 것 종료 → 다른 모드 파일 삭제).
+- away → awake로 바꾸면 `state.json`이 지워져 티켓도 사라진다 (실행기는 소비 직전에 `active()`를 다시 본다).
+- `awake`는 배터리에서도 켠다 (주의만: 배터리에서는 키 입력이 없을 때의 잠자기만 막고, 뚜껑을 닫거나 배터리가 떨어지면 잠든다). `away`는 지금처럼 배터리에서 거부한다. 뚜껑 닫힘·전원 미확인은 둘 다 거부.
+- `awake`에 티켓 인자를 주면 인자 오류(2).
+- `off`는 어느 모드든 끈다.
 - `status --json`: `active`는 "어느 모드든 켜짐", 새 키 `mode`(`away`|`awake`|null). `tickets`는 away일 때만.
 
-### 예전 훅 세션 감지
+### 0.24 이전에 뜬 탭
 - hooks.json의 guard 등록 명령에 표식을 붙인다: `guard.py --schema 1`. away.py 쪽 명령 줄은 바꾸지 않는다 (예전 away.py는 모르는 인자에 끝 코드 2를 내고, 훅의 끝 코드 2는 도구·프롬프트를 막는다. 예전 guard.py는 인자를 읽지 않아 안전하다).
-- guard는 Bash 호출마다(위험 이유와 무관, 모드와 무관) 세션 기록 `sessions/<id>.json`에 관측을 남긴다: 본 표식(`schema`), 본 시각(`seen_ts`), Claude 프로세스(`pid` = 환경 변수 `CLAUDE_PID`, 시작 시각). 같은 값이면 5분에 한 번만 쓴다.
-- away.py hook은 Stop·AskUserQuestion 이벤트를 받으면(모드와 무관) 그 세션을 `schema 1`로 올린다 (0.23에서 뜬 세션은 표식이 없어도 그 이벤트가 온 것이 등록 증거다).
-- **재시작 필요** = guard가 관측했고 `schema < 1`이고 살아 있는 세션. 살아 있음: 기록한 pid가 같은 시작 시각으로 있으면 참, pid가 없으면(환경 변수 없음·윈도우) 마지막 관측이 2시간 안.
-- 보이는 곳: `status --json`의 `stale_sessions`(`session`·`repo`·`cwd`·`seen_at`), `status` 글, `on`(away)의 경고, 앱.
-- 예전 세션 안에서: 자리 비움(away) 중 guard가 그 세션에서 처음 불릴 때(회차당 1번, 30분 지나면 다시) PreToolUse `additionalContext`로 모드 알림 + "이 세션에는 질문 보류·재개 훅이 없으니 질문 창을 쓰지 말고 글로 묻고 끝내지 말 것"을 넣는다. 위험 명령이면 deny 출력에 같이 싣는다.
+- **표식이 있는 호출(새로 뜬 탭)은 아무것도 더 하지 않는다.** 표식 없이 불린 guard만 `stale/<키>.json`에 적는다: Claude 프로세스(`CLAUDE_PID`), 세션, 폴더, 본 시각. 키는 프로세스(훅 등록은 프로세스 단위), 환경 변수가 없으면 세션 ID. 5분에 한 번만 쓰고 외부 명령은 부르지 않는다. 세션 기록(`sessions/`)과 파일이 달라 Stop 재개 횟수와 섞이지 않는다.
+- 보이는 것: `status --json`의 `stale_sessions`(`session`·`repo`·`cwd`·`seen_at`·`basis`). 살아 있음은 status가 `ps` 한 번으로 확인한다 (그 pid가 있고 본 시각보다 먼저 시작 → `basis: pid`, 끝난 프로세스의 기록은 지운다). pid가 없거나 `ps`를 못 쓰면 마지막 관측이 2시간 안인 것만 `basis: time`(추정)으로.
+- 뜻은 "0.24 이전에 시작한 탭, 재시작 권장"이다. 자리 비움 훅이 하나도 없는 탭(0.22 이전 시작)과 다 있는 탭(0.23 시작)을 가르지 않는다 (0.23 탭은 업데이트 직후 한 번 잘못 권장된다). **목록에 없다고 예전 탭이 없다는 뜻이 아니다** (Bash를 부른 탭만 보인다) → "없음"이라고 표시하지 않고, 있을 때만 보인다.
+- 보이는 곳: `status` 글, `on`(away)의 경고, 앱.
+- 예전 탭 안에서: 자리 비움(away) 중 표식 없는 guard가 불리면(회차당 1번, 30분 지나면 다시) 모드 알림 + "이 탭은 kit 업데이트 전에 시작해 질문 보류·이어 가기 훅이 없을 수 있다. 질문 창을 쓰지 말고, 글로 묻고 턴을 끝내지 말고, 보류할 것은 최종 보고에"를 넣는다. 위험 명령이면 거절 이유(`permissionDecisionReason`) 뒤에 붙이고, 그 밖의 명령이면 판정 없이 `additionalContext`로만 낸다.
 
 ### 질문 창 거절 안내
-- 선택지 중 `(Recommended)`·`추천` 표시가 있는 것을 질문마다 찾아 거절 이유에 적는다: "추천 선택지: <이름>. 되돌릴 수 있는 결정이면 이것으로 진행. 배포·삭제·권한·push 승인은 추천이 있어도 보류". 보류 목록 글에도 `(추천: <이름>)`을 붙인다.
+- 질문마다 `(Recommended)`·`(추천)` 표시가 붙은 선택지가 **정확히 하나**이고 여러 개 고르기(multiSelect)가 아닐 때만 거절 이유에 적는다: "추천 선택지: <이름>. 되돌릴 수 있는 결정이면 이것으로 진행. 배포·삭제·권한·push 승인이나 사용자가 답을 기다리라고 한 것은 추천이 있어도 보류". "비추천"은 추천으로 읽지 않는다. 보류 목록 글에도 `(추천: <이름>)`을 붙인다 (기존 가림 적용).
 
 ### 워커 권한 대기
-- harness "자리 비움 모드"에 규칙: Claude가 아닌 워커가 권한 창에서 멈췄다는 escalation이 오면 사용자를 기다리지 않는다. `orca orchestration deny --dispatch <id> --prompt <id> --reason "<worktree 안에서 대신할 방법>"`으로 다른 길을 알려 주고, 대신할 길이 없으면 그 작업만 보류하고 나머지를 한다. 사용자가 미리 허락한 범위가 아니면 `approve`는 쓰지 않는다.
+- harness "자리 비움 모드"에 규칙: Claude가 아닌 워커가 자기 권한 창에서 멈췄다는 알림이 오면 사용자를 기다리지 않는다. dispatch·approval ID가 있으면 `orca orchestration deny --dispatch <id> --prompt <id> --reason "<worktree 안에서 대신할 방법>"`으로 다른 길을 알려 준다. 거절할 수 없거나 대신할 길이 없으면 그 작업과 그 결과에 기대는 작업만 보류하고 나머지를 한다. 사용자가 미리 허락한 범위가 아니면 `approve`는 쓰지 않는다. 같은 명령을 감싸거나 다른 워커로 다시 시키지 않는다 (기존 규칙).
 - 작업 지시 제약에 "임시 파일은 worktree 안에" 추가. 모드 알림(`note_active`)에 한 문장.
 
 ### 앱
-- 켜기 전 화면 맨 위에 모드 고르기: `자리 비움`(기본) | `잠자기만 막기`. 마지막 선택을 기억한다.
-- `잠자기만 막기`: 배포 티켓 영역 숨김, 배터리는 막지 않고 주의만, 단추 "잠자기 방지 시작".
+- 켜기 전 화면 맨 위에 모드 고르기: `자리 비움` | `잠자기만 막기`. **항상 `자리 비움`이 기본이고 마지막 선택을 기억하지 않는다.** 시작 단추 글이 모드를 말한다 ("자리 비움 시작" / "잠자기 방지 시작").
+- `잠자기만 막기`: 배포 티켓 영역 숨김, 배터리는 막지 않고 주의만.
 - 켜진 동안: 제목·아이콘·안내문이 모드에 맞게 ("잠자기 방지 중 · 확인 창과 질문은 평소대로").
-- 재시작 필요 탭이 있으면 주의 카드: 레포 이름·마지막 관측 시각 (자리 비움을 고르거나 켠 동안에만).
+- 0.24 이전에 뜬 탭이 있으면 주의 카드: 레포 이름·마지막 관측 시각·"재시작 권장" (자리 비움을 고르거나 켠 동안에만).
 
 ## 설계
-- 변경: `scripts/away.py` — `mode_of`, `running()`(어느 모드든), `active()`(away만), `cmd_on --mode`, `status_obj`(`mode`, `stale_sessions`), `observe()`(guard용 관측), `stale_items()`, `stale_note()`, `hook_question` 추천, `note_active` 문장, `cmd_hook`에서 Stop·질문 이벤트 증거 기록
-- 변경: `scripts/guard.py` — `--schema` 읽기, 판정 뒤 `away.observe()` 호출(예외·시간 제한: ps 1회 2초, git 1회 2초, 세션당 한 번), 예전 세션 알림을 출력에 합침
+- 변경: `scripts/away.py` — `AWAKE`·`STALE` 경로, `load_state(path)`·`save_state(st, path)`·`remove_state(path)`, `awake()`, `cmd_on --mode`, `cmd_off`(둘 다), `status_obj`(`mode`, `stale_sessions`), `observe_old()`(guard용), `stale_items()`, `hook_question` 추천, `note_active` 문장. `active()`는 그대로 (자리 비움만)
+- 변경: `scripts/guard.py` — `--schema` 읽기, 표식이 없을 때만 `away.observe_old()` 호출(예외 무시), 안내를 거절 이유 뒤 또는 `additionalContext`로
 - 변경: `hooks/hooks.json` — guard 명령에 `--schema 1`
 - 변경: `skills/harness/SKILL.md` — 자리 비움 절에 모드·워커 권한 대기, 작업 지시 제약 (170줄 이하 유지)
 - 변경: `macos/Sources/AwayCore/Models.swift`·`AwayClient.swift`, `macos/Sources/AwayBar/Model.swift`·`PanelView.swift`·`AwayBarApp.swift`, `macos/Tests/AwayCoreTests/`
 - 변경: `scripts/test_away.sh`·`scripts/test_guard.sh`, `README.md`, `CLAUDE.md`, `.claude-plugin/plugin.json`·`marketplace.json`(0.24.0)
 
 ## 결정 & 이유
-- `active()`가 away만 돌려주게 한다 → guard·away_deploy·훅이 모두 이 함수로 판정하므로 awake는 고칠 곳 없이 "꺼짐"과 같아진다.
+- awake 상태를 별도 파일(`awake.json`)에 둔다 → 처음에는 `state.json`에 `mode`를 넣고 `active()`가 away만 돌려주게 하려 했다. 그러면 예전 스크립트(플러그인 캐시의 이전 버전 폴더로 떠 있는 탭)는 `mode`를 몰라 awake를 자리 비움으로 읽고 질문·확인 창을 거절한다 (기획 반박 반례 1, 0.23 코드로 확인). 별도 파일이면 `active()`·guard·away_deploy·훅을 고치지 않아도 awake가 "꺼짐"과 같다.
 - 표식은 guard에만 → away.py 명령 줄을 바꾸면 새 hooks.json + 예전 스크립트(되돌린 checkout) 조합에서 모든 프롬프트가 끝 코드 2로 막힌다.
-- 살아 있음 판정에 `CLAUDE_PID` → 실측(Claude Code 2.1.332): 훅 환경에 세션 자신의 Claude pid가 들어 있고 py.sh를 거친 훅의 부모 pid와 같다. 시간 창만 쓰면 탭을 재시작한 뒤에도 경고가 남아 고쳤는지 확인할 수 없다. 프로세스 시작 시각으로 "예전 세션"을 추정하지 않는다 (판정은 실제 훅 관측, pid는 살아 있는지만).
-- PreToolUse `additionalContext` → 실측(2.1.332, `claude -p` + 시험용 플러그인): 권한 결정 없이 낸 `additionalContext`가 모델에 전달됐다.
-- 세션 기록을 모드가 꺼져 있을 때도 쓴다 → 켜는 순간에 이미 떠 있는 예전 세션을 알려면 그 전에 관측이 있어야 한다. `sessions`(탭별 활동) 목록은 지금처럼 자리 비움 중 이벤트가 있던 세션만 보인다 (관측 기록에는 `last_event_ts`를 쓰지 않는다).
-- awake는 배터리 허용 → 사용자가 자리에 있고, 오늘 오전 사건이 배터리 상태 잠자기였다. 1단계의 "배터리 시작 금지"(사용자 결정)는 무인 상태 기준이라 away에는 그대로 둔다. **사용자 확인 필요 (기본값으로 진행)**.
-- 앱 기본 모드는 `자리 비움` → 앱의 원래 목적이고, 잘못 고른 채 떠나면 확인 창에서 멈춘다 (원래 사건). 마지막 선택을 기억한다.
-- hooks.json에 SessionEnd를 더하지 않는다 → 새 이벤트를 넣으면 0.23 세션이 모두 "예전"이 된다.
+- 표식 없는 호출만 기록한다 → 처음 설계는 모든 Bash 호출에서 세션 기록(`sessions/<id>.json`)을 읽고 썼다. 위험 판정 경로에 일을 더하고(훅은 시간을 넘기면 명령이 실행된다), Stop의 재개 횟수 저장과 같은 파일을 두고 경합하고, 그래도 Bash를 안 부른 탭은 못 찾는다 (반례 2). 새 탭은 비용 0, 예전 탭만 작은 파일 하나를 5분에 한 번 쓴다.
+- "Stop·질문 이벤트가 오면 최신 훅"이라는 증거 규칙은 뺐다 → 한 이벤트가 다른 matcher의 등록을 증명하지 않는다 (반박 3d). 대신 0.23 탭이 한 번 잘못 권장되는 것을 받아들인다.
+- 살아 있음은 `CLAUDE_PID` + status 때의 `ps`(경과 시간) → 실측(Claude Code 2.1.332): 훅 환경에 세션 자신의 Claude pid가 있다. 훅 등록이 프로세스 단위라 같은 프로세스 = 같은 훅 집합이다. guard 안에서는 `ps`를 부르지 않는다. 시간 창만 쓰면 탭을 재시작한 뒤에도 표시가 남는다.
+- 안내는 거절 이유 뒤에 붙인다 → 거절 이유 원문이 모델에 돌아가는 것은 1단계에서 실측했다. `permissionDecision`과 `additionalContext`를 한 출력에 같이 싣는 조합은 확인하지 않았다 (반박 3e). 판정 없는 `additionalContext`는 실측(2.1.332, `claude -p` + 시험용 플러그인)으로 전달을 확인했다.
+- awake는 배터리 허용 → 사용자가 자리에 있고, 2026-11-27 오전 사건이 배터리 상태 잠자기였다. caffeinate `-s`는 전원 연결 때만 듣고 배터리에서는 `-i`(키 입력 없을 때의 잠자기)만 막으므로 안내를 그렇게 쓴다. 1단계의 "배터리 시작 금지"(사용자 결정)는 무인 상태 기준이라 away에는 그대로 둔다. 반박은 "기존 결정의 예외를 기본 승인하지 말라"였다. 자리 비움 중이라 질문 창을 쓸 수 없어 기본값으로 진행하고 **최종 보고에서 확인받는다** (싫으면 `cmd_on`의 한 분기와 앱의 `blocker` 한 줄).
+- 앱은 마지막 모드를 기억하지 않는다 → `잠자기만 막기`가 남은 채로 다음에 떠나면 확인 창에서 멈춘다 (원래 사건). 반대 실수(자리에 있는데 자리 비움)는 거절 안내가 바로 보여서 알아챈다.
+- hooks.json에 SessionEnd를 더하지 않는다 → 새 이벤트를 넣으면 예전 탭을 더 만든다.
 
 ## 엣지 케이스 & 리스크
-- guard는 시간을 넘기면 명령이 실행된다 → 관측은 판정을 계산한 뒤, 전체 try/except, 외부 명령은 세션당 한 번·각 2초.
-- 같은 세션의 guard 여러 개가 동시에 기록 → 임시 파일 + replace(원자적), 값이 같아 잃어도 무해. Stop 재개 횟수(`blocks`)는 guard 관측이 덮지 않게 읽은 기록에 필요한 키만 바꾼다.
-- kit 없이 뜬 Claude, Codex·Kimi 탭은 보이지 않는다 (훅이 없다) → README·harness에 한계로 적는다.
-- 예전 앱(재설치 전)은 awake 상태를 "자리 비움 중"으로 보인다 → `sh macos/install.sh` 다시.
-- 0.23에서 뜬 세션은 첫 턴이 끝나기(Stop) 전까지 재시작 필요로 보일 수 있다.
+- guard는 시간을 넘기면 명령이 실행된다 → 표식 없는 호출에서만, 판정을 계산한 뒤, 전체 try/except, 외부 명령 없음.
+- 같은 프로세스의 guard 여러 개가 동시에 기록 → 임시 파일 + replace, 값이 같아 잃어도 무해 (안내가 한 번 더 나갈 수 있다).
+- kit 없이 뜬 Claude, Codex·Kimi 탭, Bash를 안 부른 예전 탭은 보이지 않는다 → README·앱 문구에 한계로 적는다.
+- 예전 앱(재설치 전)은 awake를 모른다: 켜져 있어도 "꺼짐"으로 보이고 끄지 못한다 (`away.py off` 또는 시간이 지나면 끝) → `sh macos/install.sh` 다시.
+- 예전 `away.py on`(예전 앱)은 `awake.json`을 모른 채 자리 비움을 켠다 → 두 파일이 같이 있으면 자리 비움이 우선, caffeinate가 둘일 수 있다 (둘 다 시간이 되면 끝난다).
 
 ## 기획 반박
-- (구현 전에 Codex 워커가 반박, 결과를 여기에 적는다)
+- 검토자: Codex 워커 `global.openai.gpt-6.2-astra` (워커 보고의 "Orca 실행 모델 확인", dispatch `ctx_626dd5b21e12`, 2026-11-27). 보고서는 커밋하지 않는 `.plan-rebuttal-codex.md`.
+- 반례 1 (새 상태 + 예전 스크립트: awake를 자리 비움으로 읽어 거절) — **수용.** awake 상태를 `awake.json`으로 분리.
+- 반례 2 (guard 관측 저장과 Stop 저장이 겹쳐 재개 횟수가 되돌아감, 모든 Bash에 읽기 추가) — **수용.** 관측을 표식 없는 호출로 좁히고 파일을 분리, guard 안의 `ps`·git 제거. 탭별 목록 자체를 지우자는 의견은 **기각**: 원래 사건이 "예전 탭인 줄 몰랐다"여서 보이는 만큼은 보여 주되, 못 본 탭이 있을 수 있다고 적는다.
+- 반례 3 (테스트는 통과해도 원래 멈춘 워커 권한 창은 확인 안 됨) — **수용.** S4에 실제 워커로 권한 창 → `deny --reason` → 이어 감을 확인하는 항목, 재현이 안 되면 "미검증"으로 남긴다. 거절할 수 없을 때의 보류 규칙을 harness에 넣는다.
+- 그 밖: "Stop·질문 이벤트 → 최신" 규칙 삭제(수용), 안내는 거절 이유에(수용), 추천은 질문별 하나일 때만(수용), 앱이 마지막 모드를 기억하지 않음(수용), 배터리 예외는 기본 승인하지 말 것(부분 수용: 기본값으로 구현하고 사용자 확인을 받는다), 병합 뒤 앱과 탭이 읽는 kit 경로 비교(수용, S5).
+- 워커가 확인 중 HOME 격리를 빠뜨려 실제 아침 목록에 `command:"fixture"` 한 줄을 넣었다 (상태 폴더는 에이전트가 고치지 않으므로 사용자에게 알림). 작업 지시의 "HOME을 격리한다"가 한 줄이라 약했다 → 검증 지시에는 격리 방법을 명령으로 적는다.
 
 ## 작업 단계
-- [ ] S1. away.py·guard.py·hooks.json: 모드, 관측·재시작 필요, 추천 선택지, 알림 문장 + 테스트 — Coder(지휘 세션) — `sh scripts/test_away.sh`·`test_guard.sh`·`test_away_deploy.sh` 통과, 새 케이스 포함
+- [ ] S1. away.py·guard.py·hooks.json: 모드(별도 상태 파일), 예전 탭 기록·안내, 추천 선택지, 알림 문장 + 테스트 — Coder(지휘 세션) — `sh scripts/test_away.sh`·`test_guard.sh`·`test_away_deploy.sh`·`test_deploy_gate.sh` 통과, 새 케이스 포함 (0.23 `away.py`가 awake를 꺼짐으로 읽는 것 포함)
 - [ ] S2. harness·README·CLAUDE.md·버전 0.24.0 — Coder — `claude plugin validate .`, harness 170줄 이하
-- [ ] S3. AwayBar 앱: 모드 선택, 재시작 필요 표시 — Coder — `(cd macos && swift test)` 통과, `--snapshot`으로 두 모드 화면 확인
-- [ ] S4. 독립 검증 — Validator(Codex gpt-6.2-astra) — 테스트 재실행, 변경 범위, 직접 고른 실패 시나리오 1~3개
-- [ ] S5. 병합·push·본체 pull·앱 재설치 — 지휘 세션 — `away.py status --json`에 `mode`·`stale_sessions`, 앱 화면에 모드 선택
+- [ ] S3. AwayBar 앱: 모드 선택, 재시작 권장 표시 — Coder — `(cd macos && swift test)` 통과, `--snapshot`으로 두 모드 화면 확인
+- [ ] S4. 독립 검증 — Validator(Codex gpt-6.2-astra) — 테스트 재실행, 변경 범위, 직접 고른 실패 시나리오 1~3개, 워커 권한 창 → `deny --reason` 실제 확인(안 되면 미검증으로)
+- [ ] S5. 병합·push·본체 pull·앱 재설치 — 지휘 세션 — `away.py status --json`에 `mode`·`stale_sessions`, 앱이 찾은 kit 경로가 본체인지, 앱 화면에 모드 선택
 
 ## 완료 기준
-- 앱에서 `잠자기만 막기`로 켜면 맥은 잠들지 않고, Claude 세션의 확인 창·질문 창은 평소대로 뜬다.
-- `자리 비움`으로 켤 때 예전 훅으로 떠 있는 탭이 앱에 "재시작 필요"로 보이고, 재시작하면 사라진다.
+- 앱에서 `잠자기만 막기`로 켜면 맥은 (전원 연결·뚜껑 열림 동안) 잠들지 않고, Claude 세션의 확인 창·질문 창은 평소대로 뜬다. 예전 스크립트로 떠 있는 탭에서도 마찬가지다.
+- `자리 비움`으로 켤 때 0.24 이전에 떠서 Bash를 부른 탭이 앱에 "재시작 권장"으로 보이고, 재시작하면 사라진다.
 - 자리 비움 중 질문 창이 거절될 때 추천 선택지가 안내에 나온다.
+- 지휘 세션이 워커의 권한 창 알림을 받았을 때 사용자를 기다리지 않고 거절·보류 뒤 다른 일을 한다 (규칙 + S4 확인).
 
 ## 남은 일
 - (작업 중 채운다)
